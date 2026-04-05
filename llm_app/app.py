@@ -29,6 +29,20 @@ from flask import (
 
 from omnivoice import OmniVoice
 
+from omnivoice_client import OmniVoiceClient
+from voice_presets import VoicePresetManager, VOICE_DESIGN_ATTRIBUTES, validate_instruct, build_instruct_string
+from person import (
+    create_person,
+    delete_person,
+    enroll_sample,
+    get_person,
+    identify_speaker,
+    identify_speaker_from_base64,
+    list_persons,
+    verify_match,
+    verify_match_from_base64,
+)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -41,6 +55,7 @@ config = {
     "voices": {},
 }
 omnivoice_model = None
+omnivoice_client = None
 
 
 # ============================================================================
@@ -59,7 +74,7 @@ def load_config():
 
 def load_omnivoice():
     """Load OmniVoice model."""
-    global omnivoice_model
+    global omnivoice_model, omnivoice_client
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     dtype = torch.float16 if device != "cpu" else torch.float32
 
@@ -70,6 +85,7 @@ def load_omnivoice():
             device_map=device,
             dtype=dtype,
         )
+        omnivoice_client = OmniVoiceClient(omnivoice_model)
         logger.info("OmniVoice model loaded successfully")
     except Exception as e:
         logger.error(f"Failed to load OmniVoice: {e}")
@@ -306,14 +322,23 @@ def generate_tts():
     """Generate TTS audio.
 
     Request JSON:
-    - text: str (required) - Text to synthesize
+    - text: str or list (required) - Text(s) to synthesize
     - voice: str (optional) - Voice preset name from /data/voices
     - ref_audio: str (optional) - Base64 encoded reference audio for cloning
     - ref_text: str (optional) - Transcript of reference audio
     - instruct: str (optional) - Voice design attributes
+    - preset: str (optional) - Use saved voice preset
     - speed: float (optional) - Speaking rate
     - num_steps: int (optional) - Diffusion steps
     - provider: str (optional) - TTS provider (omnivoice, minimax)
+
+    Query params:
+    - download: 'true' returns file download
+    - embed: 'true' returns base64 encoded audio
+    - mode: 'clone', 'design', or 'auto' (default: auto)
+
+    Returns:
+    - Audio file (default) or JSON with metadata and optional base64 audio.
     """
     if omnivoice_model is None:
         return jsonify({"error": "OmniVoice model not loaded"}), 500
@@ -322,14 +347,17 @@ def generate_tts():
     if not data or "text" not in data:
         return jsonify({"error": "Missing 'text' in request"}), 400
 
-    text = data["text"]
+    # Handle batch TTS
+    is_batch = isinstance(data["text"], list)
+    texts = data["text"] if is_batch else [data["text"]]
+
     provider = data.get("provider", "omnivoice")
 
     if provider == "minimax":
         return generate_minimax_tts(data)
 
     # OmniVoice TTS
-    return generate_omnivoice_tts(data)
+    return generate_omnivoice_tts(data, texts, is_batch)
 
 
 def generate_omnivoice_tts(data):
@@ -525,6 +553,188 @@ def conversation_minimax(message, provider, system_prompt=None):
                 "details": response.text[:200]
             }), 400
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ============================================================================
+# API: Persons - Voice Enrollment & Speaker Identification
+# ============================================================================
+
+@app.route("/api/persons", methods=["GET"])
+def api_list_persons():
+    """List all enrolled persons."""
+    persons = list_persons()
+    return jsonify({"persons": [p.to_dict() for p in persons]})
+
+
+@app.route("/api/persons", methods=["POST"])
+def api_create_person():
+    """Create a new person with optional initial enrollment.
+
+    Multipart form with:
+    - name: str (required) - Person's display name
+    - samples: List of audio files (optional) - Initial enrollment samples
+    """
+    name = request.form.get("name")
+    if not name:
+        return jsonify({"error": "Name is required"}), 400
+
+    # Handle audio samples
+    audio_samples = []
+    if "samples" in request.files:
+        files = request.files.getlist("samples")
+        for f in files:
+            if f.filename:
+                # Save to temp file
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                    f.save(tmp.name)
+                    audio_samples.append(tmp.name)
+
+    try:
+        person = create_person(name, audio_samples=audio_samples if audio_samples else None)
+        return jsonify({"success": True, "person": person.to_dict()}), 201
+    except Exception as e:
+        logger.error(f"Failed to create person: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        # Cleanup temp files
+        for path in audio_samples:
+            if os.path.exists(path):
+                os.unlink(path)
+
+
+@app.route("/api/persons/<person_id>", methods=["GET"])
+def api_get_person(person_id):
+    """Get person details."""
+    person = get_person(person_id)
+    if not person:
+        return jsonify({"error": f"Person '{person_id}' not found"}), 404
+    return jsonify({"person": person.to_dict()})
+
+
+@app.route("/api/persons/<person_id>", methods=["DELETE"])
+def api_delete_person(person_id):
+    """Delete a person and their voiceprint."""
+    success = delete_person(person_id)
+    if not success:
+        return jsonify({"error": f"Person '{person_id}' not found"}), 404
+    return jsonify({"success": True})
+
+
+@app.route("/api/persons/<person_id>/enroll", methods=["POST"])
+def api_enroll_sample(person_id):
+    """Add voice sample to existing person.
+
+    Multipart form with:
+    - audio: Audio file (required)
+    """
+    person = get_person(person_id)
+    if not person:
+        return jsonify({"error": f"Person '{person_id}' not found"}), 404
+
+    if "audio" not in request.files:
+        return jsonify({"error": "No audio file provided"}), 400
+
+    audio_file = request.files["audio"]
+    if not audio_file.filename:
+        return jsonify({"error": "No file selected"}), 400
+
+    # Save to temp file
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        audio_file.save(tmp.name)
+        tmp_path = tmp.name
+
+    try:
+        person = enroll_sample(person_id, tmp_path)
+        return jsonify({"success": True, "person": person.to_dict()})
+    except Exception as e:
+        logger.error(f"Failed to enroll sample: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+
+@app.route("/api/identify-speaker", methods=["POST"])
+def api_identify_speaker():
+    """Identify speaker from audio file.
+
+    Multipart form with:
+    - audio: Audio file to identify (required)
+    OR
+    JSON body with:
+    - audio: Base64 encoded audio (required)
+    """
+    # Check for multipart file upload
+    if request.content_type and "multipart/form-data" in request.content_type:
+        if "audio" not in request.files:
+            return jsonify({"error": "No audio file provided"}), 400
+
+        audio_file = request.files["audio"]
+        if not audio_file.filename:
+            return jsonify({"error": "No file selected"}), 400
+
+        # Save to temp file
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            audio_file.save(tmp.name)
+            tmp_path = tmp.name
+
+        try:
+            result = identify_speaker(tmp_path)
+            return jsonify(result)
+        except Exception as e:
+            logger.error(f"Speaker identification failed: {e}")
+            return jsonify({"error": str(e)}), 500
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+    # Check for JSON with base64 audio
+    data = request.get_json()
+    if data and "audio" in data:
+        try:
+            result = identify_speaker_from_base64(data["audio"])
+            return jsonify(result)
+        except Exception as e:
+            logger.error(f"Speaker identification failed: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    return jsonify({"error": "No audio provided"}), 400
+
+
+@app.route("/api/verify-speaker", methods=["POST"])
+def api_verify_speaker():
+    """Verify audio matches an enrolled person.
+
+    JSON body:
+    - person_id: str (required) - ID of person to verify against
+    - audio: Base64 encoded audio (required)
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    person_id = data.get("person_id")
+    audio_b64 = data.get("audio")
+
+    if not person_id:
+        return jsonify({"error": "person_id is required"}), 400
+    if not audio_b64:
+        return jsonify({"error": "audio is required"}), 400
+
+    person = get_person(person_id)
+    if not person:
+        return jsonify({"error": f"Person '{person_id}' not found"}), 404
+
+    if not person.is_enrolled():
+        return jsonify({"error": "Person is not enrolled"}), 400
+
+    try:
+        result = verify_match_from_base64(audio_b64, person)
+        result["person"] = person.to_dict()
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Speaker verification failed: {e}")
         return jsonify({"error": str(e)}), 500
 
 

@@ -3,3 +3,5 @@ torchaudio==2.8.0
 flask>=3.0.0
 omnivoice>=0.1.0
 requests>=2.31.0
+resemblyzer>=0.1.0
+numpy>=1.24.0
