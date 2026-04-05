@@ -360,67 +360,215 @@ def generate_tts():
     return generate_omnivoice_tts(data, texts, is_batch)
 
 
-def generate_omnivoice_tts(data):
-    """Generate TTS using OmniVoice."""
-    global omnivoice_model
+def generate_omnivoice_tts(data, texts, is_batch=False):
+    """Generate TTS using OmniVoice.
 
-    text = data["text"]
+    Args:
+        data: Request JSON data.
+        texts: List of texts to synthesize.
+        is_batch: Whether this is a batch request.
+
+    Returns:
+        JSON response with audio(s) and metadata, or audio file.
+    """
+    global omnivoice_model, omnivoice_client
+
     voice_name = data.get("voice")
     ref_audio_b64 = data.get("ref_audio")
     ref_text = data.get("ref_text")
     instruct = data.get("instruct")
+    preset_name = data.get("preset")
     speed = data.get("speed", 1.0)
     num_steps = data.get("num_steps", 32)
+    mode = data.get("mode", "auto")
 
-    generate_kwargs = {
-        "text": text,
-        "num_step": num_steps,
-        "speed": speed,
-    }
+    # Query params
+    download = request.args.get("download", "false").lower() == "true"
+    embed = request.args.get("embed", "false").lower() == "true"
 
-    # Voice cloning from preset
-    if voice_name:
-        voices_dir = Path("/data/voices")
-        voice_path = voices_dir / f"{voice_name}.wav"
-        if voice_path.exists():
-            generate_kwargs["ref_audio"] = str(voice_path)
-            transcript_path = voice_path.with_suffix(".txt")
-            if transcript_path.exists():
-                generate_kwargs["ref_text"] = transcript_path.read_text().strip()
-        else:
-            return jsonify({"error": f"Voice '{voice_name}' not found"}), 404
-    elif ref_audio_b64:
-        # Voice cloning from base64 audio
-        audio_bytes = base64.b64decode(ref_audio_b64)
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-            f.write(audio_bytes)
-            generate_kwargs["ref_audio"] = f.name
-            if ref_text:
-                generate_kwargs["ref_text"] = ref_text
-    elif instruct:
-        # Voice design
-        generate_kwargs["instruct"] = instruct
+    # Handle preset mode
+    if preset_name:
+        return _generate_with_preset(texts, preset_name, speed, num_steps, download, embed, is_batch)
+
+    # Handle regular generation
+    results = []
+    temp_files = []
 
     try:
-        audio = omnivoice_model.generate(**generate_kwargs)
+        for text in texts:
+            generate_kwargs = {
+                "num_steps": num_steps,
+                "speed": speed,
+            }
 
-        # Save to buffer as WAV
-        buffer = io.BytesIO()
-        torchaudio.save(buffer, audio[0], 24000, format="wav")
-        buffer.seek(0)
+            # Determine mode and set appropriate args
+            if voice_name:
+                # Voice cloning from preset
+                voices_dir = Path("/data/voices")
+                voice_path = voices_dir / f"{voice_name}.wav"
+                if voice_path.exists():
+                    generate_kwargs["ref_audio"] = str(voice_path)
+                    transcript_path = voice_path.with_suffix(".txt")
+                    if transcript_path.exists():
+                        generate_kwargs["ref_text"] = transcript_path.read_text().strip()
+                else:
+                    return jsonify({"error": f"Voice '{voice_name}' not found"}), 404
+                generate_kwargs["mode"] = "clone"
+            elif ref_audio_b64:
+                # Voice cloning from base64 audio
+                audio_bytes = base64.b64decode(ref_audio_b64)
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                    f.write(audio_bytes)
+                    generate_kwargs["ref_audio"] = f.name
+                    temp_files.append(f.name)
+                    if ref_text:
+                        generate_kwargs["ref_text"] = ref_text
+                generate_kwargs["mode"] = "clone"
+            elif instruct:
+                # Voice design
+                generate_kwargs["instruct"] = instruct
+                generate_kwargs["mode"] = "design"
+            else:
+                generate_kwargs["mode"] = "auto"
 
-        return send_file(
-            buffer,
-            mimetype="audio/wav",
-            as_attachment=False,
-            download_name="output.wav"
-        )
+            audio = omnivoice_model.generate(text=text, **generate_kwargs)
+            metadata = omnivoice_client.get_audio_metadata(audio)
+            audio_bytes = omnivoice_client.audio_to_bytes(audio)
+
+            result = {
+                "text": text,
+                "metadata": metadata,
+            }
+            if embed:
+                result["audio"] = base64.b64encode(audio_bytes).decode("utf-8")
+            else:
+                result["audio"] = audio_bytes
+
+            results.append(result)
+
+        # Return response
+        if download and not is_batch:
+            # Single file download
+            buffer = io.BytesIO(results[0]["audio"])
+            return send_file(
+                buffer,
+                mimetype="audio/wav",
+                as_attachment=True,
+                download_name="output.wav"
+            )
+
+        if embed:
+            return jsonify({
+                "audios": results,
+                "batch": is_batch,
+            })
+
+        # Return metadata with audio bytes (non-embed)
+        if is_batch:
+            return jsonify({
+                "audios": results,
+                "batch": True,
+            })
+        else:
+            # Single non-embed: return audio file
+            buffer = io.BytesIO(results[0]["audio"])
+            return send_file(
+                buffer,
+                mimetype="audio/wav",
+                as_attachment=download,
+                download_name="output.wav"
+            )
+
     except Exception as e:
         logger.error(f"TTS generation failed: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
-        if ref_audio_b64 and "ref_audio" in generate_kwargs:
-            os.unlink(generate_kwargs["ref_audio"])
+        for f in temp_files:
+            try:
+                os.unlink(f)
+            except OSError:
+                pass
+
+
+def _generate_with_preset(texts, preset_name, speed, num_steps, download, embed, is_batch):
+    """Generate TTS using a saved voice preset.
+
+    Args:
+        texts: List of texts to synthesize.
+        preset_name: Name of the saved preset.
+        speed: Speaking rate.
+        num_steps: Diffusion steps.
+        download: Whether to return as file download.
+        embed: Whether to return base64 encoded.
+        is_batch: Whether this is a batch request.
+
+    Returns:
+        JSON response with audio(s) and metadata, or audio file.
+    """
+    global omnivoice_client
+
+    preset_manager = VoicePresetManager()
+    preset = preset_manager.load_preset(preset_name)
+
+    if preset is None:
+        return jsonify({"error": f"Preset '{preset_name}' not found"}), 404
+
+    results = []
+    for text in texts:
+        try:
+            audio, preset_meta = omnivoice_client.generate_with_preset(
+                text, preset_name, speed=speed, num_steps=num_steps
+            )
+            metadata = omnivoice_client.get_audio_metadata(audio)
+            metadata["preset"] = preset_meta.get("name")
+            metadata["preset_description"] = preset_meta.get("description", "")
+            audio_bytes = omnivoice_client.audio_to_bytes(audio)
+
+            result = {
+                "text": text,
+                "metadata": metadata,
+            }
+            if embed:
+                result["audio"] = base64.b64encode(audio_bytes).decode("utf-8")
+            else:
+                result["audio"] = audio_bytes
+
+            results.append(result)
+        except Exception as e:
+            logger.error(f"Preset TTS generation failed: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    # Return response
+    if download and not is_batch:
+        buffer = io.BytesIO(results[0]["audio"])
+        return send_file(
+            buffer,
+            mimetype="audio/wav",
+            as_attachment=True,
+            download_name=f"{preset_name}.wav"
+        )
+
+    if embed:
+        return jsonify({
+            "audios": results,
+            "batch": is_batch,
+            "preset": preset_name,
+        })
+
+    if is_batch:
+        return jsonify({
+            "audios": results,
+            "batch": True,
+            "preset": preset_name,
+        })
+    else:
+        buffer = io.BytesIO(results[0]["audio"])
+        return send_file(
+            buffer,
+            mimetype="audio/wav",
+            as_attachment=download,
+            download_name=f"{preset_name}.wav"
+        )
 
 
 def generate_minimax_tts(data):
@@ -736,6 +884,181 @@ def api_verify_speaker():
     except Exception as e:
         logger.error(f"Speaker verification failed: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+# ============================================================================
+# API: Voice Design
+# ============================================================================
+
+@app.route("/api/voice-design/attributes", methods=["GET"])
+def get_voice_design_attributes():
+    """Get supported voice design attributes.
+
+    Returns:
+        JSON with supported attributes for voice design:
+        - gender: male, female
+        - age: child, teenager, adult, elderly
+        - pitch: very_low, low, medium, high, very_high
+        - accent: various accents
+        - style: various speaking styles
+    """
+    return jsonify({
+        "attributes": VOICE_DESIGN_ATTRIBUTES,
+        "example_instruct": "female, british accent, medium pitch, calm",
+    })
+
+
+@app.route("/api/voice-design/presets", methods=["GET"])
+def list_voice_presets():
+    """List saved voice presets.
+
+    Returns:
+        JSON with list of saved presets.
+    """
+    preset_manager = VoicePresetManager()
+    presets = preset_manager.list_presets()
+    return jsonify({"presets": presets})
+
+
+@app.route("/api/voice-design/presets", methods=["POST"])
+def create_voice_preset():
+    """Create a new voice preset from generated audio.
+
+    Request JSON:
+    - audio: Base64 encoded audio (required)
+    - name: str (required) - Unique preset name
+    - description: str (optional)
+    - ref_text: str (optional) - Transcript
+    - instruct: str (optional) - Voice design instruction used
+    - tags: list (optional) - Tags for categorization
+
+    Returns:
+        JSON with created preset metadata.
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    name = data.get("name")
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+
+    audio_b64 = data.get("audio")
+    if not audio_b64:
+        return jsonify({"error": "audio is required"}), 400
+
+    try:
+        audio_bytes = base64.b64decode(audio_b64)
+        import torchaudio as ta
+
+        # Load audio from bytes
+        buffer = io.BytesIO(audio_bytes)
+        audio, sr = ta.load(buffer)
+
+        preset_manager = VoicePresetManager()
+        preset = preset_manager.save_preset(
+            audio=audio,
+            name=name,
+            description=data.get("description", ""),
+            ref_text=data.get("ref_text", ""),
+            instruct=data.get("instruct", ""),
+            tags=data.get("tags", []),
+        )
+
+        return jsonify({"success": True, "preset": preset}), 201
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.error(f"Failed to create preset: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/voice-design/presets/<name>", methods=["GET"])
+def get_voice_preset(name):
+    """Get a specific voice preset.
+
+    Returns:
+        JSON with preset metadata.
+    """
+    preset_manager = VoicePresetManager()
+    preset = preset_manager.load_preset(name)
+
+    if preset is None:
+        return jsonify({"error": f"Preset '{name}' not found"}), 404
+
+    return jsonify({"preset": preset})
+
+
+@app.route("/api/voice-design/presets/<name>", methods=["DELETE"])
+def delete_voice_preset(name):
+    """Delete a voice preset.
+
+    Returns:
+        JSON with deleted file paths.
+    """
+    preset_manager = VoicePresetManager()
+    deleted = preset_manager.delete_preset(name)
+
+    if not deleted:
+        return jsonify({"error": f"Preset '{name}' not found"}), 404
+
+    return jsonify({"success": True, "deleted": deleted})
+
+
+@app.route("/api/voice-design/validate-instruct", methods=["POST"])
+def validate_voice_instruct():
+    """Validate a voice design instruct string.
+
+    Request JSON:
+    - instruct: str (required) - Instruct string to validate
+
+    Returns:
+        JSON with validation result and any issues.
+    """
+    data = request.get_json()
+    if not data or "instruct" not in data:
+        return jsonify({"error": "instruct string is required"}), 400
+
+    instruct = data["instruct"]
+    is_valid, issues = validate_instruct(instruct)
+
+    return jsonify({
+        "valid": is_valid,
+        "instruct": instruct,
+        "issues": issues,
+    })
+
+
+@app.route("/api/voice-design/build-instruct", methods=["POST"])
+def build_voice_instruct():
+    """Build an instruct string from individual attributes.
+
+    Request JSON:
+    - gender: str (optional)
+    - age: str (optional)
+    - pitch: str (optional)
+    - accent: str (optional)
+    - style: str (optional)
+
+    Returns:
+        JSON with built instruct string.
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    instruct = build_instruct_string(
+        gender=data.get("gender"),
+        age=data.get("age"),
+        pitch=data.get("pitch"),
+        accent=data.get("accent"),
+        style=data.get("style"),
+    )
+
+    return jsonify({
+        "instruct": instruct,
+        "attributes": data,
+    })
 
 
 # ============================================================================
