@@ -427,3 +427,54 @@ button {
     text-align: center;
     padding: 40px;
 }
+
+/* Persons List */
+.persons-list,
+.samples-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.person-card,
+.sample-card {
+    background: #0f3460;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.person-header,
+.sample-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.person-header h3,
+.sample-header h4 {
+    color: #fff;
+}
+
+.person-info p,
+.sample-info p {
+    color: #aaa;
+    margin-bottom: 6px;
+}
+
+.person-actions,
+.sample-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.badge-success {
+    background: #00ff88;
+    color: #1a1a2e;
+}
+
+.badge-pending {
+    background: #ffaa00;
+    color: #1a1a2e;
+}

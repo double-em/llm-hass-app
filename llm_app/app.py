@@ -43,6 +43,10 @@ from person import (
     verify_match_from_base64,
 )
 
+from person_store import PersonStore
+from enrollment import EnrollmentManager
+from voiceprint import VoiceprintManager
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -56,6 +60,9 @@ config = {
 }
 omnivoice_model = None
 omnivoice_client = None
+person_store = None
+enrollment_manager = None
+voiceprint_manager = None
 
 
 # ============================================================================
@@ -92,6 +99,15 @@ def load_omnivoice():
         raise
 
 
+def load_person_system():
+    """Initialize the person system components."""
+    global person_store, enrollment_manager, voiceprint_manager
+    person_store = PersonStore()
+    enrollment_manager = EnrollmentManager()
+    voiceprint_manager = VoiceprintManager()
+    logger.info("Person system initialized")
+
+
 # ============================================================================
 # Web UI Routes
 # ============================================================================
@@ -118,6 +134,12 @@ def voices_page():
 def tts_page():
     """TTS generation page."""
     return render_template("tts.html")
+
+
+@app.route("/persons")
+def persons_page():
+    """Person enrollment page."""
+    return render_template("persons.html")
 
 
 # ============================================================================
@@ -1103,5 +1125,6 @@ if __name__ == "__main__":
 
     load_config()
     load_omnivoice()
+    load_person_system()
 
     app.run(host=args.host, port=args.port, debug=args.debug)
