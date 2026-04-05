@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import tempfile
+import uuid
 from pathlib import Path
 
 import torch
@@ -732,73 +733,77 @@ def conversation_minimax(message, provider, system_prompt=None):
 
 @app.route("/api/persons", methods=["GET"])
 def api_list_persons():
-    """List all enrolled persons."""
-    persons = list_persons()
-    return jsonify({"persons": [p.to_dict() for p in persons]})
+    """List all enrolled persons with enrollment status."""
+    persons = person_store.list_persons()
+    result = []
+    for p in persons:
+        p["enrollment_status"] = "complete" if p.get("enrollment_complete") else "pending"
+        result.append(p)
+    return jsonify({"persons": result})
 
 
 @app.route("/api/persons", methods=["POST"])
 def api_create_person():
-    """Create a new person with optional initial enrollment.
+    """Create a new person.
 
-    Multipart form with:
+    JSON body:
     - name: str (required) - Person's display name
-    - samples: List of audio files (optional) - Initial enrollment samples
+
+    Returns:
+        Created person dict
     """
-    name = request.form.get("name")
-    if not name:
+    data = request.get_json()
+    if not data or not data.get("name"):
         return jsonify({"error": "Name is required"}), 400
 
-    # Handle audio samples
-    audio_samples = []
-    if "samples" in request.files:
-        files = request.files.getlist("samples")
-        for f in files:
-            if f.filename:
-                # Save to temp file
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                    f.save(tmp.name)
-                    audio_samples.append(tmp.name)
-
-    try:
-        person = create_person(name, audio_samples=audio_samples if audio_samples else None)
-        return jsonify({"success": True, "person": person.to_dict()}), 201
-    except Exception as e:
-        logger.error(f"Failed to create person: {e}")
-        return jsonify({"error": str(e)}), 500
-    finally:
-        # Cleanup temp files
-        for path in audio_samples:
-            if os.path.exists(path):
-                os.unlink(path)
+    name = data["name"]
+    person = person_store.create_person(name)
+    return jsonify({"success": True, "person": person}), 201
 
 
 @app.route("/api/persons/<person_id>", methods=["GET"])
 def api_get_person(person_id):
-    """Get person details."""
-    person = get_person(person_id)
+    """Get person details with voice samples."""
+    person = person_store.get_person(person_id)
     if not person:
         return jsonify({"error": f"Person '{person_id}' not found"}), 404
-    return jsonify({"person": person.to_dict()})
+
+    # Get voice samples
+    samples = person_store.get_voice_samples(person_id)
+    person["voice_samples"] = samples
+
+    # Get enrollment status if in progress
+    enrollment = enrollment_manager.get_enrollment_for_person(person_id)
+    if enrollment and enrollment["status"] == "in_progress":
+        person["enrollment_status"] = "in_progress"
+        person["enrollment_id"] = enrollment["id"]
+        person["sample_count"] = len(enrollment["samples"])
+    else:
+        person["enrollment_status"] = "complete" if person.get("enrollment_complete") else "pending"
+
+    return jsonify({"person": person})
 
 
 @app.route("/api/persons/<person_id>", methods=["DELETE"])
 def api_delete_person(person_id):
-    """Delete a person and their voiceprint."""
-    success = delete_person(person_id)
-    if not success:
+    """Delete a person and their voice samples."""
+    person = person_store.get_person(person_id)
+    if not person:
         return jsonify({"error": f"Person '{person_id}' not found"}), 404
-    return jsonify({"success": True})
+
+    success = person_store.delete_person(person_id)
+    return jsonify({"success": success})
 
 
-@app.route("/api/persons/<person_id>/enroll", methods=["POST"])
-def api_enroll_sample(person_id):
-    """Add voice sample to existing person.
+@app.route("/api/persons/<person_id>/samples", methods=["POST"])
+def api_add_sample(person_id):
+    """Add voice sample to a person (multipart form).
 
-    Multipart form with:
+    Form field:
     - audio: Audio file (required)
+    - transcript: str (optional) - Transcript of the audio
     """
-    person = get_person(person_id)
+    person = person_store.get_person(person_id)
     if not person:
         return jsonify({"error": f"Person '{person_id}' not found"}), 404
 
@@ -809,20 +814,57 @@ def api_enroll_sample(person_id):
     if not audio_file.filename:
         return jsonify({"error": "No file selected"}), 400
 
-    # Save to temp file
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-        audio_file.save(tmp.name)
-        tmp_path = tmp.name
+    transcript = request.form.get("transcript", "")
+
+    # Save to samples directory
+    samples_dir = Path("/data/samples") / person_id
+    samples_dir.mkdir(parents=True, exist_ok=True)
+
+    sample_path = samples_dir / f"{uuid.uuid4()}.wav"
+    audio_file.save(sample_path)
 
     try:
-        person = enroll_sample(person_id, tmp_path)
-        return jsonify({"success": True, "person": person.to_dict()})
+        person_store.add_voice_sample(person_id, str(sample_path), transcript)
+        samples = person_store.get_voice_samples(person_id)
+        return jsonify({
+            "success": True,
+            "sample_count": len(samples),
+            "samples": samples,
+        })
     except Exception as e:
-        logger.error(f"Failed to enroll sample: {e}")
+        logger.error(f"Failed to add sample: {e}")
+        if sample_path.exists():
+            sample_path.unlink()
         return jsonify({"error": str(e)}), 500
-    finally:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+
+
+@app.route("/api/persons/<person_id>/status", methods=["GET"])
+def api_person_status(person_id):
+    """Get enrollment status for a person."""
+    person = person_store.get_person(person_id)
+    if not person:
+        return jsonify({"error": f"Person '{person_id}' not found"}), 404
+
+    # Check for active enrollment
+    enrollment = enrollment_manager.get_enrollment_for_person(person_id)
+
+    if enrollment:
+        return jsonify({
+            "person_id": person_id,
+            "status": enrollment["status"],
+            "enrollment_id": enrollment["id"],
+            "sample_count": len(enrollment["samples"]),
+            "min_required": enrollment_manager.MIN_SAMPLES,
+            "recommended": enrollment_manager.RECOMMENDED_SAMPLES,
+        })
+
+    # No active enrollment, check if completed
+    return jsonify({
+        "person_id": person_id,
+        "status": "enrolled" if person.get("enrollment_complete") else "not_enrolled",
+        "voice_samples_count": len(person.get("voice_samples", [])),
+        "has_voiceprint": person.get("voiceprint_path") is not None,
+    })
 
 
 @app.route("/api/identify-speaker", methods=["POST"])
