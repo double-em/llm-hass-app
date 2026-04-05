@@ -1,87 +1,92 @@
-# OmniVoice TTS for Home Assistant
+# LLM AI Dashboard for Home Assistant
 
-Custom voice cloning and text-to-speech generation using [OmniVoice](https://github.com/k2-fsa/OmniVoice) for Home Assistant.
+A comprehensive dashboard for managing AI providers and voice cloning TTS in Home Assistant.
 
 ## Features
 
-- **Voice Cloning**: Clone a voice from a short reference audio sample
-- **Voice Design**: Generate speech using speaker attributes (gender, accent, pitch, etc.)
-- **Auto Voice**: Generate speech with a randomly selected voice
-- **600+ Languages**: Supports most languages for zero-shot TTS
+- **AI Provider Management**: Configure and manage AI providers (MiniMax, and more)
+- **Voice Cloning**: Upload reference audio for voice cloning
+- **Voice Design**: Generate speech using speaker attributes
+- **Text-to-Speech**: Generate high-quality TTS using OmniVoice or MiniMax
+- **Conversation**: Chat with AI providers directly from the dashboard
 
 ## App Structure
 
 ```
 llm_app/
-├── Dockerfile      # Docker image with OmniVoice + Flask API
-├── config.yaml     # App configuration and options schema
-├── run.sh          # Startup script
-└── api.py          # Flask API server wrapping OmniVoice
+├── Dockerfile          # Docker image with Flask + OmniVoice
+├── config.yaml         # App configuration
+├── requirements.txt    # Python dependencies
+├── run.sh              # Startup script
+├── app.py              # Main Flask application
+├── templates/          # HTML templates
+│   ├── layout.html
+│   ├── index.html
+│   ├── providers.html
+│   ├── voices.html
+│   └── tts.html
+└── static/             # CSS and JS
+    ├── css/style.css
+    └── js/app.js
 ```
+
+## Quick Start
+
+1. Copy `llm_app/` to your Home Assistant `/addons` directory
+2. Install the addon via Settings → Apps → App Store
+3. Start the addon
+4. Access the dashboard at `http://<homeassistant>:8000`
 
 ## API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/health` | GET | Health check |
-| `/tts` | POST | Generate TTS audio |
-| `/voices` | GET | List available voice presets |
+| `/api/health` | GET | Health check |
+| `/api/providers` | GET | List AI providers |
+| `/api/providers` | POST | Add/update provider |
+| `/api/providers/<name>` | DELETE | Delete provider |
+| `/api/providers/<name>/test` | POST | Test provider connection |
+| `/api/voices` | GET | List voice presets |
+| `/api/voices` | POST | Upload voice |
+| `/api/voices/<name>` | DELETE | Delete voice |
+| `/api/tts` | POST | Generate TTS audio |
+| `/api/conversation` | POST | Send conversation message |
 
-### TTS Endpoint
+### TTS Generation
 
-**POST /tts**
+**POST /api/tts**
 
-Request body (JSON):
 ```json
 {
   "text": "Hello, this is a test.",
-  "ref_audio": "<base64-encoded-wav>",
-  "ref_text": "Transcript of reference audio",
+  "provider": "omnivoice",
+  "voice": "my-voice-preset",
   "instruct": "female, british accent",
   "speed": 1.0,
   "num_steps": 32
 }
 ```
 
-- `text` (required): Text to synthesize
-- `ref_audio` (optional): Base64-encoded WAV for voice cloning
-- `ref_text` (optional): Transcript for reference audio
-- `instruct` (optional): Voice design attributes
-- `speed` (optional): Speaking rate (default: 1.0)
-- `num_steps` (optional): Diffusion steps (default: 32)
+### Conversation
 
-Returns: WAV audio file
+**POST /api/conversation**
 
-### Voice Presets
-
-Place reference audio files in `/data/voices/` (e.g., `my_voice.wav`) with optional transcripts (`my_voice.txt`) to use them as voice presets.
-
-## Home Assistant Integration
-
-Add a `rest_command` to your Home Assistant configuration:
-
-```yaml
-rest_command:
-  omnivoice_tts:
-    url: "http://homeassistant:8000/tts"
-    method: POST
-    content_type: "application/json"
-    payload: >
-      {
-        "text": "{{ states('sensor.tts_text') }}",
-        "ref_audio": "{{ state_attr('input_text.voice_sample', 'b64_audio') }}",
-        "instruct": "{{ states('input_select.voice_style') }}"
-      }
+```json
+{
+  "message": "Hello, how are you?",
+  "provider": "minimax"
+}
 ```
 
-## Setup
+## Voice Cloning with OmniVoice
 
-1. Copy `llm_app/` to your Home Assistant `/addons` directory
-2. Install the addon via Settings → Apps → App Store
-3. Start the addon
-4. Access the API at `http://<ha>:8000`
+OmniVoice supports 600+ languages and provides three voice modes:
 
-## Voice Design Attributes
+1. **Voice Clone**: Use a reference audio file from `/data/voices/`
+2. **Voice Design**: Describe the voice with attributes (e.g., "female, low pitch")
+3. **Auto Voice**: Let the model choose automatically
+
+### Voice Design Attributes
 
 - **Gender**: male, female
 - **Age**: child, teenager, adult, elderly
@@ -90,4 +95,38 @@ rest_command:
 - **Style**: whisper
 - **Chinese dialects**: 四川话, 陕西话, etc.
 
-Example: `"female, british accent, medium pitch"`
+Example: `female, british accent, medium pitch`
+
+## Home Assistant Integration
+
+### TTS in Automations
+
+```yaml
+service: rest_command.omnivoice_tts
+data:
+  text: "The front door is now unlocked"
+```
+
+### Conversation Agent
+
+```yaml
+conversation_agent:
+  - name: llm_ai
+   llm_ai:
+      provider: minimax
+```
+
+## MiniMax Integration
+
+The app integrates with MiniMax AI for:
+- **Conversation**: Natural language interactions
+- **TTS**: High-quality voice synthesis (15+ English voices, 40+ Chinese voices)
+
+Configure MiniMax in the dashboard or via the API with your API key from [MiniMax Platform](https://platform.minimax.io).
+
+## Data Persistence
+
+- Configuration: `/data/options.json`
+- Voice presets: `/data/voices/`
+
+Voice files should be WAV format. Include a `.txt` file with the same name for the transcript.

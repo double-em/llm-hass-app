@@ -1,0 +1,161 @@
+{% extends "layout.html" %}
+
+{% block title %}Voices - LLM AI{% endblock %}
+
+{% block content %}
+<div class="voices-page">
+    <h1>Voice Management</h1>
+
+    <div class="section">
+        <h2>Upload Voice</h2>
+        <form id="voice-form" onsubmit="uploadVoice(event)">
+            <div class="form-group">
+                <label>Voice Name</label>
+                <input type="text" name="name" placeholder="my-voice" required>
+            </div>
+            <div class="form-group">
+                <label>Reference Audio (WAV)</label>
+                <input type="file" name="file" accept=".wav" required>
+            </div>
+            <div class="form-group">
+                <label>Transcript (optional)</label>
+                <textarea name="transcript" rows="2" placeholder="Transcript of the reference audio..."></textarea>
+            </div>
+            <button type="submit" class="btn-primary">Upload Voice</button>
+        </form>
+    </div>
+
+    <div class="section">
+        <h2>Voice Presets</h2>
+        <p class="info">Place reference audio files in <code>/data/voices/</code> directory for voice cloning.</p>
+        <div id="voices-list" class="voices-list">
+            Loading...
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadVoices() {
+    const data = await api('/api/voices');
+    const container = document.getElementById('voices-list');
+
+    const voices = data.voices || [];
+
+    if (voices.length === 0) {
+        container.innerHTML = '';
+        const empty = document.createElement('p');
+        empty.className = 'empty';
+        empty.textContent = 'No voice presets uploaded yet.';
+        container.appendChild(empty);
+        return;
+    }
+
+    container.innerHTML = '';
+    voices.forEach(voice => {
+        const card = document.createElement('div');
+        card.className = 'voice-card';
+
+        const header = document.createElement('div');
+        header.className = 'voice-header';
+
+        const title = document.createElement('h3');
+        title.textContent = voice.name;
+        header.appendChild(title);
+
+        card.appendChild(header);
+
+        const info = document.createElement('div');
+        info.className = 'voice-info';
+
+        if (voice.transcript) {
+            const transcript = document.createElement('p');
+            transcript.className = 'transcript';
+            const q = document.createElement('q');
+            q.textContent = voice.transcript;
+            transcript.appendChild(q);
+            info.appendChild(transcript);
+        }
+
+        const size = document.createElement('p');
+        size.className = 'meta';
+        size.textContent = 'Size: ' + formatBytes(voice.size);
+        info.appendChild(size);
+
+        card.appendChild(info);
+
+        const actions = document.createElement('div');
+        actions.className = 'voice-actions';
+
+        const downloadBtn = document.createElement('button');
+        downloadBtn.className = 'btn-secondary';
+        downloadBtn.textContent = 'Download';
+        downloadBtn.onclick = () => downloadVoice(voice.name);
+        actions.appendChild(downloadBtn);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'btn-danger';
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.onclick = () => deleteVoice(voice.name);
+        actions.appendChild(deleteBtn);
+
+        card.appendChild(actions);
+        container.appendChild(card);
+    });
+}
+
+async function uploadVoice(e) {
+    e.preventDefault();
+    const form = e.target;
+    const formData = new FormData(form);
+
+    try {
+        const response = await fetch('/api/voices', {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (response.ok && result.success) {
+            form.reset();
+            loadVoices();
+        } else {
+            alert('Error: ' + (result.error || 'Upload failed'));
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+}
+
+function downloadVoice(name) {
+    window.location.href = '/api/voices/' + name + '/download';
+}
+
+async function deleteVoice(name) {
+    if (!confirm('Delete voice "' + name + '"?')) return;
+
+    try {
+        const response = await fetch('/api/voices/' + name, { method: 'DELETE' });
+        const result = await response.json();
+
+        if (result.success) {
+            loadVoices();
+        } else {
+            alert('Error: ' + (result.error || 'Delete failed'));
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+}
+
+function formatBytes(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+loadVoices();
+</script>
+{% endblock %}

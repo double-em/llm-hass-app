@@ -1,0 +1,181 @@
+{% extends "layout.html" %}
+
+{% block title %}Dashboard - LLM AI{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <h1>LLM AI Integration Dashboard</h1>
+
+    <div class="cards">
+        <div class="card">
+            <div class="card-icon">🤖</div>
+            <div class="card-info">
+                <h3>AI Providers</h3>
+                <p id="providers-count">Loading...</p>
+            </div>
+            <a href="/providers" class="card-link">Manage →</a>
+        </div>
+
+        <div class="card">
+            <div class="card-icon">🎙️</div>
+            <div class="card-info">
+                <h3>Voices</h3>
+                <p id="voices-count">Loading...</p>
+            </div>
+            <a href="/voices" class="card-link">Manage →</a>
+        </div>
+
+        <div class="card">
+            <div class="card-icon">🔊</div>
+            <div class="card-info">
+                <h3>TTS</h3>
+                <p>Generate speech</p>
+            </div>
+            <a href="/tts" class="card-link">Generate →</a>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Quick TTS</h2>
+        <div class="tts-quick">
+            <textarea id="quick-text" placeholder="Enter text to synthesize..." rows="3"></textarea>
+            <div class="tts-options">
+                <select id="quick-voice">
+                    <option value="">Auto Voice</option>
+                </select>
+                <select id="quick-provider">
+                    <option value="omnivoice">OmniVoice</option>
+                    <option value="minimax">MiniMax</option>
+                </select>
+                <button onclick="generateQuickTTS()">Generate</button>
+            </div>
+            <audio id="quick-audio" controls style="display:none; margin-top: 10px;"></audio>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Conversation</h2>
+        <div class="conversation">
+            <select id="conv-provider">
+                <option value="">Select provider...</option>
+            </select>
+            <div class="conv-messages" id="conv-messages"></div>
+            <div class="conv-input">
+                <input type="text" id="conv-message" placeholder="Type your message...">
+                <button onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadDashboard() {
+    const health = await api('/api/health');
+    document.getElementById('health-indicator').className =
+        health.omnivoice_loaded ? 'indicator online' : 'indicator offline';
+    document.getElementById('health-text').textContent =
+        health.omnivoice_loaded ? 'System Ready' : 'Model Loading';
+
+    const providers = await api('/api/providers');
+    document.getElementById('providers-count').textContent =
+        Object.keys(providers.providers || {}).length + ' configured';
+
+    const voices = await api('/api/voices');
+    document.getElementById('voices-count').textContent =
+        (voices.voices || []).length + ' voices';
+
+    // Populate quick TTS voice dropdown
+    const voiceSelect = document.getElementById('quick-voice');
+    (voices.voices || []).forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.name;
+        opt.textContent = v.name;
+        voiceSelect.appendChild(opt);
+    });
+
+    // Populate conversation provider dropdown
+    const convProvider = document.getElementById('conv-provider');
+    Object.keys(providers.providers || {}).forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        convProvider.appendChild(opt);
+    });
+}
+
+async function generateQuickTTS() {
+    const text = document.getElementById('quick-text').value;
+    if (!text) return alert('Please enter text');
+
+    const voice = document.getElementById('quick-voice').value;
+    const provider = document.getElementById('quick-provider').value;
+
+    const body = { text, provider };
+    if (voice) body.voice = voice;
+
+    try {
+        const response = await fetch('/api/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+
+        if (response.ok) {
+            const blob = await response.blob();
+            const audio = document.getElementById('quick-audio');
+            audio.src = URL.createObjectURL(blob);
+            audio.style.display = 'block';
+            audio.play();
+        } else {
+            const err = await response.json();
+            alert('Error: ' + err.error);
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+}
+
+let conversationHistory = [];
+
+async function sendMessage() {
+    const message = document.getElementById('conv-message').value;
+    const provider = document.getElementById('conv-provider').value;
+    if (!message) return;
+
+    // Add user message
+    addConvMessage('user', message);
+    document.getElementById('conv-message').value = '';
+
+    try {
+        const response = await fetch('/api/conversation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message, provider })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            addConvMessage('assistant', data.response);
+        } else {
+            const err = await response.json();
+            addConvMessage('assistant', 'Error: ' + err.error);
+        }
+    } catch (e) {
+        addConvMessage('assistant', 'Error: ' + e.message);
+    }
+}
+
+function addConvMessage(role, content) {
+    const container = document.getElementById('conv-messages');
+    const div = document.createElement('div');
+    div.className = 'conv-message ' + role;
+    div.textContent = content;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+
+loadDashboard();
+</script>
+{% endblock %}

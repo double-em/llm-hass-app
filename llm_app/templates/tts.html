@@ -1,0 +1,182 @@
+{% extends "layout.html" %}
+
+{% block title %}TTS - LLM AI{% endblock %}
+
+{% block content %}
+<div class="tts-page">
+    <h1>Text-to-Speech Generation</h1>
+
+    <div class="section">
+        <h2>Generate Speech</h2>
+        <form id="tts-form" onsubmit="generateTTS(event)">
+            <div class="form-group">
+                <label>Text</label>
+                <textarea id="tts-text" name="text" rows="4" placeholder="Enter text to synthesize..." required></textarea>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Provider</label>
+                    <select id="tts-provider" name="provider">
+                        <option value="omnivoice">OmniVoice</option>
+                        <option value="minimax">MiniMax</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Voice Mode</label>
+                    <select id="voice-mode" onchange="toggleVoiceMode(this.value)">
+                        <option value="auto">Auto Voice</option>
+                        <option value="clone">Voice Clone (preset)</option>
+                        <option value="design">Voice Design (attributes)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="clone-options" class="form-group" style="display:none;">
+                <label>Voice Preset</label>
+                <select id="tts-voice" name="voice">
+                    <option value="">Select a voice...</option>
+                </select>
+            </div>
+
+            <div id="design-options" class="form-group" style="display:none;">
+                <label>Voice Attributes</label>
+                <input type="text" id="tts-instruct" name="instruct"
+                    placeholder="e.g., female, british accent, medium pitch">
+                <small>Comma-separated: gender, accent, pitch, style</small>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Speed</label>
+                    <input type="number" id="tts-speed" name="speed" value="1.0" min="0.5" max="2.0" step="0.1">
+                </div>
+
+                <div class="form-group">
+                    <label>Diffusion Steps</label>
+                    <input type="number" id="tts-steps" name="num_steps" value="32" min="1" max="100">
+                    <small>Higher = better quality, slower</small>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Reference Audio (Base64 WAV - for voice cloning)</label>
+                <textarea id="tts-ref-audio" name="ref_audio" rows="2"
+                    placeholder="Base64 encoded WAV audio (optional)"></textarea>
+            </div>
+
+            <div class="form-group">
+                <label>Reference Text (transcript of reference audio)</label>
+                <input type="text" id="tts-ref-text" name="ref_text"
+                    placeholder="Transcript of reference audio (optional)">
+            </div>
+
+            <button type="submit" class="btn-primary btn-large">Generate Speech</button>
+        </form>
+
+        <div id="tts-result" class="tts-result" style="display:none;">
+            <h3>Generated Audio</h3>
+            <audio id="tts-audio" controls></audio>
+            <div class="tts-actions">
+                <button onclick="downloadTTS()" class="btn-secondary">Download</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let generatedAudioBlob = null;
+
+async function loadVoices() {
+    const data = await api('/api/voices');
+    const select = document.getElementById('tts-voice');
+
+    (data.voices || []).forEach(voice => {
+        const opt = document.createElement('option');
+        opt.value = voice.name;
+        opt.textContent = voice.name;
+        select.appendChild(opt);
+    });
+}
+
+function toggleVoiceMode(mode) {
+    document.getElementById('clone-options').style.display = mode === 'clone' ? 'block' : 'none';
+    document.getElementById('design-options').style.display = mode === 'design' ? 'block' : 'none';
+}
+
+async function generateTTS(e) {
+    e.preventDefault();
+
+    const text = document.getElementById('tts-text').value;
+    if (!text) {
+        alert('Please enter text');
+        return;
+    }
+
+    const provider = document.getElementById('tts-provider').value;
+    const voiceMode = document.getElementById('voice-mode').value;
+    const speed = parseFloat(document.getElementById('tts-speed').value) || 1.0;
+    const numSteps = parseInt(document.getElementById('tts-steps').value) || 32;
+
+    const body = { text, provider, speed, num_steps: numSteps };
+
+    if (voiceMode === 'clone') {
+        const voice = document.getElementById('tts-voice').value;
+        if (voice) body.voice = voice;
+    } else if (voiceMode === 'design') {
+        const instruct = document.getElementById('tts-instruct').value;
+        if (instruct) body.instruct = instruct;
+    }
+
+    const refAudio = document.getElementById('tts-ref-audio').value;
+    const refText = document.getElementById('tts-ref-text').value;
+    if (refAudio) {
+        body.ref_audio = refAudio;
+        if (refText) body.ref_text = refText;
+    }
+
+    const btn = e.target.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+
+    try {
+        const response = await fetch('/api/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+
+        if (response.ok) {
+            generatedAudioBlob = await response.blob();
+            const audio = document.getElementById('tts-audio');
+            audio.src = URL.createObjectURL(generatedAudioBlob);
+            document.getElementById('tts-result').style.display = 'block';
+        } else {
+            const err = await response.json();
+            alert('Error: ' + (err.error || 'Generation failed'));
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Generate Speech';
+    }
+}
+
+function downloadTTS() {
+    if (!generatedAudioBlob) return;
+
+    const url = URL.createObjectURL(generatedAudioBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'output.wav';
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+loadVoices();
+</script>
+{% endblock %}
