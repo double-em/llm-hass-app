@@ -1,14 +1,21 @@
-name: "LLM App"
-description: "LLM-powered Home Assistant automation"
+name: "OmniVoice TTS"
+description: "Custom voice cloning and TTS for Home Assistant using OmniVoice"
 version: "0.1.0"
-slug: "llm_app"
+slug: "omnivoice_tts"
 init: false
 arch:
   - aarch64
   - amd64
 startup: services
+ports:
+  8000/tcp: 8000
 options:
-  model: "claude"
+  model: "k2-fsa/OmniVoice"
+  device: "auto"
+  default_speed: 1.0
+  default_steps: 32
 schema:
   model: str
-  api_key: str
+  device: str
+  default_speed: num
+  default_steps: int
