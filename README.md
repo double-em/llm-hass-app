@@ -69,23 +69,50 @@ llm_ai_dashboard/         # Home Assistant Addon
 5. Start the addon
 6. Access the dashboard at `http://<homeassistant>:8000`
 
-### Option 2: Manual Add-on Installation
+### Option 2: Standalone Docker (Recommended for Local Development)
+
+```bash
+# Pull and run
+docker run -d -p 8000:8000 \
+  -v $(pwd)/data:/data \
+  -e MINIMAX_API_KEY=your_api_key \
+  ghcr.io/double-em/llm-hass-app:latest
+
+# Access at http://localhost:8000
+```
+
+**Building locally:**
+
+```bash
+docker build -t llm-ai-dashboard .
+docker run -d -p 8000:8000 \
+  -v $(pwd)/data:/data \
+  -e MINIMAX_API_KEY=your_api_key \
+  llm-ai-dashboard
+```
+
+**With Docker Compose:**
+
+```yaml
+services:
+  llm-ai-dashboard:
+    image: ghcr.io/double-em/llm-hass-app:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    environment:
+      - MINIMAX_API_KEY=your_api_key
+```
+
+**Data persistence:** Voice presets, persons, and memory are stored in `/data` inside the container. Mount a volume to persist data across restarts.
+
+### Option 3: Manual Add-on Installation
 
 1. Clone this repository to your Home Assistant server
 2. Copy the `llm_app/` directory to `/addons/llm_ai_dashboard/`
 3. Restart Home Assistant
 4. The addon will appear in the Add-on Store
-
-### Option 2: Standalone Docker
-
-```bash
-cd llm_app
-docker build -t llm-ai-dashboard .
-docker run -d -p 8000:8000 \
-  -v ./data:/data \
-  -e MINIMAX_API_KEY=your_api_key \
-  llm-ai-dashboard
-```
 
 ## Configuration
 
