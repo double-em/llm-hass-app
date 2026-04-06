@@ -22,6 +22,23 @@ jobs:
         run: |
           pip install -r requirements.txt pytest
 
+      - name: Create llm_app package for tests
+        run: |
+          mkdir -p llm_app
+          touch llm_app/__init__.py
+          ln -s ../voice_cache.py llm_app/voice_cache.py
+          ln -s ../voice_cache_store.py llm_app/voice_cache_store.py
+          ln -s ../voice_presets.py llm_app/voice_presets.py
+          ln -s ../voice_engine.py llm_app/voice_engine.py
+          ln -s ../omnivoice_client.py llm_app/omnivoice_client.py
+          ln -s ../person.py llm_app/person.py
+          ln -s ../person_store.py llm_app/person_store.py
+          ln -s ../enrollment.py llm_app/enrollment.py
+          ln -s ../voiceprint.py llm_app/voiceprint.py
+          ln -s ../app.py llm_app/app.py
+          ln -s ../config_flow.py llm_app/config_flow.py
+          ln -s ../const.py llm_app/const.py
+
       - name: Run tests
         run: |
           python -m pytest tests/ -v
