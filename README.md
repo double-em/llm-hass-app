@@ -71,12 +71,23 @@ llm_ai_dashboard/         # Home Assistant Addon
 
 ### Option 2: Standalone Docker (Recommended for Local Development)
 
+Two images are available:
+- **`ghcr.io/double-em/llm-hass-app:cpu-latest`** — CPU-only (default, smaller ~3GB)
+- **`ghcr.io/double-em/llm-hass-app:gpu-latest`** — CUDA GPU support (requires NVIDIA GPU ~5GB)
+
 ```bash
-# Pull and run
+# CPU (default)
 docker run -d -p 8000:8000 \
   -v $(pwd)/data:/data \
   -e MINIMAX_API_KEY=your_api_key \
-  ghcr.io/double-em/llm-hass-app:latest
+  ghcr.io/double-em/llm-hass-app:cpu-latest
+
+# GPU (requires NVIDIA runtime)
+docker run -d -p 8000:8000 \
+  --gpus all \
+  -v $(pwd)/data:/data \
+  -e MINIMAX_API_KEY=your_api_key \
+  ghcr.io/double-em/llm-hass-app:gpu-latest
 
 # Access at http://localhost:8000
 ```
@@ -84,11 +95,20 @@ docker run -d -p 8000:8000 \
 **Building locally:**
 
 ```bash
-docker build -t llm-ai-dashboard .
+# CPU build
+docker build -f Dockerfile.cpu -t llm-ai-dashboard:cpu .
 docker run -d -p 8000:8000 \
   -v $(pwd)/data:/data \
   -e MINIMAX_API_KEY=your_api_key \
-  llm-ai-dashboard
+  llm-ai-dashboard:cpu
+
+# GPU build (requires NVIDIA GPU)
+docker build -f Dockerfile.gpu -t llm-ai-dashboard:gpu .
+docker run -d -p 8000:8000 \
+  --gpus all \
+  -v $(pwd)/data:/data \
+  -e MINIMAX_API_KEY=your_api_key \
+  llm-ai-dashboard:gpu
 ```
 
 **With Docker Compose:**
@@ -96,13 +116,23 @@ docker run -d -p 8000:8000 \
 ```yaml
 services:
   llm-ai-dashboard:
-    image: ghcr.io/double-em/llm-hass-app:latest
+    image: ghcr.io/double-em/llm-hass-app:cpu-latest
     ports:
       - "8000:8000"
     volumes:
       - ./data:/data
     environment:
       - MINIMAX_API_KEY=your_api_key
+
+  # For GPU support:
+  # image: ghcr.io/double-em/llm-hass-app:gpu-latest
+  # deploy:
+  #   resources:
+  #     reservations:
+  #       devices:
+  #         - driver: nvidia
+  #           count: 1
+  #           capabilities: [gpu]
 ```
 
 **Data persistence:** Voice presets, persons, and memory are stored in `/data` inside the container. Mount a volume to persist data across restarts.

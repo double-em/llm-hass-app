@@ -1,0 +1,71 @@
+# ============================================================================
+# GPU Build stage
+# ============================================================================
+FROM nvidia/cuda:12.4.1-cudnn9-runtime-ubuntu22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+
+# Install Python and pip
+RUN apt-get update && apt-get install -y \
+    python3.12 \
+    python3.12-venv \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create venv
+RUN python3.12 -m venv /venv
+
+# Install PyTorch with CUDA support
+RUN /venv/bin/pip install \
+    torch==2.8.0 \
+    torchaudio==2.8.0 \
+    --index-url https://download.pytorch.org/whl/cu124
+
+# Install remaining dependencies
+COPY requirements.txt /tmp/
+RUN /venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt \
+    --ignore-installed torch
+
+# ============================================================================
+# GPU Runtime stage
+# ============================================================================
+FROM nvidia/cuda:12.4.1-cudnn9-runtime-ubuntu22.04 AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8000
+ENV PATH=/venv/bin:$PATH
+
+# Install Python
+RUN apt-get update && apt-get install -y \
+    python3.12 \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy venv from builder
+COPY --from=builder /venv /venv
+
+# Create app directory
+WORKDIR /app
+
+# Copy application files
+COPY *.py /app/
+COPY memory/ /app/memory/
+COPY templates/ /app/templates/
+
+# Create data directory
+RUN mkdir -p /data/voices /data/persons /data/samples /data/memory
+
+# Create non-root user
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app /data
+USER appuser
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:8000/api/health', timeout=5)" || exit 1
+
+CMD ["python", "app.py"]
