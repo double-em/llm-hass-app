@@ -1,0 +1,189 @@
+{% extends "layout.html" %}
+
+{% block title %}AI Providers - LLM AI{% endblock %}
+
+{% block content %}
+<div class="providers-page">
+    <h1>AI Providers</h1>
+
+    <div class="section">
+        <h2>Add Provider</h2>
+        <form id="provider-form" onsubmit="addProvider(event)">
+            <div class="form-group">
+                <label>Name</label>
+                <input type="text" name="name" placeholder="my-provider" required>
+            </div>
+            <div class="form-group">
+                <label>Type</label>
+                <select name="type" required onchange="toggleProviderFields(this.value)">
+                    <option value="minimax">MiniMax</option>
+                </select>
+            </div>
+
+            <div id="minimax-fields">
+                <div class="form-group">
+                    <label>API Key</label>
+                    <input type="password" name="api_key" placeholder="Enter API key">
+                </div>
+                <div class="form-group">
+                    <label>Chat Model</label>
+                    <select name="chat_model">
+                        <option value="MiniMax-M2.7">MiniMax-M2.7 (Recommended)</option>
+                        <option value="MiniMax-M2.7-highspeed">MiniMax-M2.7-highspeed (Fast)</option>
+                        <option value="MiniMax-M2.5">MiniMax-M2.5</option>
+                        <option value="MiniMax-M2.5-highspeed">MiniMax-M2.5-highspeed (Fast)</option>
+                        <option value="MiniMax-M2.1">MiniMax-M2.1</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Max Tokens</label>
+                    <input type="number" name="max_tokens" value="16000" min="1000" max="16000">
+                </div>
+            </div>
+
+            <button type="submit" class="btn-primary">Add Provider</button>
+        </form>
+    </div>
+
+    <div class="section">
+        <h2>Configured Providers</h2>
+        <div id="providers-list" class="providers-list">
+            Loading...
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadProviders() {
+    const data = await api('/api/providers');
+    const container = document.getElementById('providers-list');
+
+    const providers = data.providers || {};
+    const names = Object.keys(providers);
+
+    if (names.length === 0) {
+        container.innerHTML = '<p class="empty">No providers configured yet.</p>';
+        return;
+    }
+
+    container.innerHTML = '';
+    names.forEach(name => {
+        const p = providers[name];
+        const card = document.createElement('div');
+        card.className = 'provider-card';
+
+        const header = document.createElement('div');
+        header.className = 'provider-header';
+
+        const title = document.createElement('h3');
+        title.textContent = name;
+        header.appendChild(title);
+
+        const badge = document.createElement('span');
+        badge.className = 'badge';
+        badge.textContent = p.type;
+        header.appendChild(badge);
+
+        card.appendChild(header);
+
+        const info = document.createElement('div');
+        info.className = 'provider-info';
+
+        const model = document.createElement('p');
+        model.innerHTML = '<strong>Model:</strong> ' + (p.chat_model || 'default');
+        info.appendChild(model);
+
+        const apiKey = document.createElement('p');
+        apiKey.innerHTML = '<strong>API Key:</strong> ' + (p.api_key ? '••••••••' + p.api_key.slice(-4) : 'Not set');
+        info.appendChild(apiKey);
+
+        card.appendChild(info);
+
+        const actions = document.createElement('div');
+        actions.className = 'provider-actions';
+
+        const testBtn = document.createElement('button');
+        testBtn.className = 'btn-secondary';
+        testBtn.textContent = 'Test';
+        testBtn.onclick = () => testProvider(name);
+        actions.appendChild(testBtn);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'btn-danger';
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.onclick = () => deleteProvider(name);
+        actions.appendChild(deleteBtn);
+
+        card.appendChild(actions);
+        container.appendChild(card);
+    });
+}
+
+async function addProvider(e) {
+    e.preventDefault();
+    const form = e.target;
+    const formData = new FormData(form);
+
+    const data = {
+        name: formData.get('name'),
+        type: formData.get('type'),
+        api_key: formData.get('api_key'),
+        chat_model: formData.get('chat_model'),
+        max_tokens: parseInt(formData.get('max_tokens')) || 16000,
+    };
+
+    const result = await api('/api/providers', {
+        method: 'POST',
+        body: JSON.stringify(data)
+    });
+
+    if (result.success) {
+        form.reset();
+        loadProviders();
+    } else {
+        alert('Error: ' + (result.error || 'Unknown error'));
+    }
+}
+
+async function testProvider(name) {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = 'Testing...';
+
+    try {
+        const response = await fetch(`/api/providers/${name}/test`, { method: 'POST' });
+        const result = await response.json();
+
+        if (result.success) {
+            alert('Success: ' + result.message);
+        } else {
+            alert('Failed: ' + result.error);
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Test';
+    }
+}
+
+async function deleteProvider(name) {
+    if (!confirm('Delete provider "' + name + '"?')) return;
+
+    const result = await api('/api/providers/' + name, { method: 'DELETE' });
+    if (result.success) {
+        loadProviders();
+    } else {
+        alert('Error: ' + (result.error || 'Unknown error'));
+    }
+}
+
+function toggleProviderFields(type) {
+    document.getElementById('minimax-fields').style.display = type === 'minimax' ? 'block' : 'none';
+}
+
+loadProviders();
+</script>
+{% endblock %}

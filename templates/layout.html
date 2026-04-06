@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}LLM AI Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <nav class="sidebar">
+        <div class="logo">
+            <h2>LLM AI</h2>
+        </div>
+        <ul class="nav-links">
+            <li><a href="/" class="{% if request.path == '/' %}active{% endif %}">
+                <span class="icon">🏠</span> Dashboard
+            </a></li>
+            <li><a href="/providers" class="{% if request.path == '/providers' %}active{% endif %}">
+                <span class="icon">🤖</span> AI Providers
+            </a></li>
+            <li><a href="/voices" class="{% if request.path == '/voices' %}active{% endif %}">
+                <span class="icon">🎙️</span> Voices
+            </a></li>
+            <li><a href="/persons" class="{% if request.path == '/persons' %}active{% endif %}">
+                <span class="icon">👤</span> Persons
+            </a></li>
+            <li><a href="/tts" class="{% if request.path == '/tts' %}active{% endif %}">
+                <span class="icon">🔊</span> TTS
+            </a></li>
+            <li><a href="/memory" class="{% if request.path == '/memory' %}active{% endif %}">
+                <span class="icon">🧠</span> AI Memory
+            </a></li>
+            <li><a href="/vector" class="{% if request.path == '/vector' %}active{% endif %}">
+                <span class="icon">🔍</span> Vector Memory
+            </a></li>
+            <li><a href="/ha-assists" class="{% if request.path == '/ha-assists' %}active{% endif %}">
+                <span class="icon">🏠</span> HA Assists
+            </a></li>
+        </ul>
+        <div class="status">
+            <span class="indicator" id="health-indicator"></span>
+            <span id="health-text">Checking...</span>
+        </div>
+    </nav>
+
+    <main class="content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

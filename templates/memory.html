@@ -1,0 +1,263 @@
+{% extends "layout.html" %}
+
+{% block title %}AI Memory - LLM AI{% endblock %}
+
+{% block content %}
+<div class="memory-page">
+    <h1>AI Memory</h1>
+
+    <div class="memory-container">
+        <div class="sessions-panel">
+            <div class="panel-header">
+                <h2>Sessions</h2>
+                <button class="btn-primary btn-small" onclick="startNewSession()">+ New</button>
+            </div>
+            <div id="sessions-list" class="sessions-list">
+                Loading...
+            </div>
+        </div>
+
+        <div class="history-panel">
+            <div class="panel-header">
+                <h2 id="session-title">Select a session</h2>
+                <div class="session-actions" id="session-actions" style="display: none;">
+                    <button class="btn-secondary btn-small" onclick="exportSession()">Export</button>
+                    <button class="btn-danger btn-small" onclick="clearSession()">Clear</button>
+                </div>
+            </div>
+
+            <div id="conversation-history" class="conversation-history">
+                <p class="empty">Select a session to view conversation history</p>
+            </div>
+
+            <div class="message-input" id="message-input" style="display: none;">
+                <select id="memory-provider">
+                    <option value="">Select provider...</option>
+                </select>
+                <div class="input-row">
+                    <input type="text" id="memory-message" placeholder="Type your message...">
+                    <button class="btn-primary" onclick="sendMemoryMessage()">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentSession = null;
+let conversationHistory = [];
+
+async function loadSessions() {
+    try {
+        const response = await fetch('/api/memory/sessions');
+        const data = await response.json();
+        renderSessions(data.sessions || []);
+    } catch (e) {
+        document.getElementById('sessions-list').innerHTML =
+            '<p class="empty">Error loading sessions</p>';
+    }
+}
+
+function renderSessions(sessions) {
+    const container = document.getElementById('sessions-list');
+
+    if (sessions.length === 0) {
+        container.innerHTML = '<p class="empty">No sessions yet. Start a new conversation!</p>';
+        return;
+    }
+
+    container.innerHTML = '';
+    sessions.forEach(session => {
+        const item = document.createElement('div');
+        item.className = 'session-item' + (currentSession && currentSession.id === session.id ? ' active' : '');
+        item.onclick = () => selectSession(session);
+
+        const title = document.createElement('div');
+        title.className = 'session-title';
+        title.textContent = session.title || 'Untitled Session';
+
+        const meta = document.createElement('div');
+        meta.className = 'session-meta';
+        const date = new Date(session.created_at || session.updated_at);
+        meta.textContent = formatDate(date) + ' • ' + session.message_count + ' messages';
+
+        item.appendChild(title);
+        item.appendChild(meta);
+        container.appendChild(item);
+    });
+}
+
+async function selectSession(session) {
+    currentSession = session;
+    document.getElementById('session-title').textContent = session.title || 'Untitled Session';
+    document.getElementById('session-actions').style.display = 'flex';
+    document.getElementById('message-input').style.display = 'block';
+
+    try {
+        const response = await fetch('/api/memory/sessions/' + session.id);
+        const data = await response.json();
+        renderConversation(data.messages || []);
+    } catch (e) {
+        document.getElementById('conversation-history').innerHTML =
+            '<p class="empty">Error loading conversation</p>';
+    }
+
+    document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
+    event.target.closest('.session-item').classList.add('active');
+}
+
+function renderConversation(messages) {
+    const container = document.getElementById('conversation-history');
+    conversationHistory = messages;
+
+    if (messages.length === 0) {
+        container.innerHTML = '<p class="empty">No messages in this session</p>';
+        return;
+    }
+
+    container.innerHTML = '';
+    messages.forEach(msg => {
+        const div = document.createElement('div');
+        div.className = 'conv-message ' + msg.role;
+        div.textContent = msg.content;
+        container.appendChild(div);
+    });
+
+    container.scrollTop = container.scrollHeight;
+}
+
+async function startNewSession() {
+    const title = prompt('Session name (optional):');
+    try {
+        const response = await fetch('/api/memory/sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: title || null })
+        });
+        const data = await response.json();
+        if (data.session) {
+            currentSession = data.session;
+            loadSessions();
+            selectSession({ id: data.session.id, title: data.session.title });
+        }
+    } catch (e) {
+        alert('Error creating session');
+    }
+}
+
+async function sendMemoryMessage() {
+    const message = document.getElementById('memory-message').value;
+    const provider = document.getElementById('memory-provider').value;
+    if (!message) return;
+
+    if (!currentSession) {
+        alert('Please select or create a session first');
+        return;
+    }
+
+    addMessage('user', message);
+    document.getElementById('memory-message').value = '';
+
+    try {
+        const response = await fetch('/api/memory/sessions/' + currentSession.id + '/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message, provider })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            if (data.messages) {
+                renderConversation(data.messages);
+            } else if (data.response) {
+                addMessage('assistant', data.response);
+            }
+        } else {
+            const err = await response.json();
+            addMessage('assistant', 'Error: ' + (err.error || 'Failed'));
+        }
+    } catch (e) {
+        addMessage('assistant', 'Error: ' + e.message);
+    }
+}
+
+function addMessage(role, content) {
+    const container = document.getElementById('conversation-history');
+    const emptyMsg = container.querySelector('.empty');
+    if (emptyMsg) emptyMsg.remove();
+
+    const div = document.createElement('div');
+    div.className = 'conv-message ' + role;
+    div.textContent = content;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+
+async function clearSession() {
+    if (!currentSession) return;
+    if (!confirm('Clear all messages in this session? This cannot be undone.')) return;
+
+    try {
+        const response = await fetch('/api/memory/sessions/' + currentSession.id, {
+            method: 'DELETE'
+        });
+        if (response.ok) {
+            renderConversation([]);
+        }
+    } catch (e) {
+        alert('Error clearing session');
+    }
+}
+
+async function exportSession() {
+    if (!currentSession) return;
+
+    try {
+        const response = await fetch('/api/memory/sessions/' + currentSession.id + '/export');
+        const data = await response.json();
+
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'session-' + currentSession.id + '.json';
+        a.click();
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        alert('Error exporting session');
+    }
+}
+
+async function loadProviders() {
+    try {
+        const response = await fetch('/api/providers');
+        const data = await response.json();
+        const select = document.getElementById('memory-provider');
+        Object.keys(data.providers || {}).forEach(name => {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            select.appendChild(opt);
+        });
+    } catch (e) {
+        console.error('Error loading providers');
+    }
+}
+
+function formatDate(date) {
+    const now = new Date();
+    const diff = now - date;
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+    if (days === 0) return 'Today';
+    if (days === 1) return 'Yesterday';
+    if (days < 7) return days + ' days ago';
+    return date.toLocaleDateString();
+}
+
+loadSessions();
+loadProviders();
+</script>
+{% endblock %}

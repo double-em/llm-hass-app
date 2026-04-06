@@ -1,0 +1,335 @@
+{% extends "layout.html" %}
+
+{% block title %}Voices - LLM AI{% endblock %}
+
+{% block content %}
+<div class="voices-page">
+    <h1>Voice Management</h1>
+
+    <div class="section">
+        <h2>Upload Voice</h2>
+        <form id="voice-form" onsubmit="uploadVoice(event)">
+            <div class="form-group">
+                <label>Voice Name</label>
+                <input type="text" name="name" placeholder="my-voice" required>
+            </div>
+            <div class="form-group">
+                <label>Reference Audio (WAV)</label>
+                <input type="file" name="file" accept=".wav" required>
+            </div>
+            <div class="form-group">
+                <label>Transcript (optional)</label>
+                <textarea name="transcript" rows="2" placeholder="Transcript of the reference audio..."></textarea>
+            </div>
+            <button type="submit" class="btn-primary">Upload Voice</button>
+        </form>
+    </div>
+
+    <div class="section">
+        <h2>Voice Presets</h2>
+        <p class="info">Place reference audio files in <code>/data/voices/</code> directory for voice cloning.</p>
+        <div id="voices-list" class="voices-list">
+            Loading...
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Voice Cache</h2>
+        <p class="info">Cached TTS audio lines for faster playback.</p>
+        <div class="cache-stats" id="cache-stats">
+            <div class="stat-card">
+                <div class="stat-icon">📦</div>
+                <div class="stat-info">
+                    <h3>Total Entries</h3>
+                    <p id="cache-entries">-</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">💾</div>
+                <div class="stat-info">
+                    <h3>Cache Size</h3>
+                    <p id="cache-size">-</p>
+                </div>
+            </div>
+        </div>
+        <div class="form-actions">
+            <button class="btn-danger btn-small" onclick="clearVoiceCache()">Clear All Cache</button>
+        </div>
+        <div id="voice-cache-list" class="voices-list">
+            Loading...
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadVoices() {
+    const data = await api('/api/voices');
+    const container = document.getElementById('voices-list');
+
+    const voices = data.voices || [];
+
+    if (voices.length === 0) {
+        container.innerHTML = '';
+        const empty = document.createElement('p');
+        empty.className = 'empty';
+        empty.textContent = 'No voice presets uploaded yet.';
+        container.appendChild(empty);
+        return;
+    }
+
+    container.innerHTML = '';
+    voices.forEach(voice => {
+        const card = document.createElement('div');
+        card.className = 'voice-card';
+
+        const header = document.createElement('div');
+        header.className = 'voice-header';
+
+        const title = document.createElement('h3');
+        title.textContent = voice.name;
+        header.appendChild(title);
+
+        card.appendChild(header);
+
+        const info = document.createElement('div');
+        info.className = 'voice-info';
+
+        if (voice.transcript) {
+            const transcript = document.createElement('p');
+            transcript.className = 'transcript';
+            const q = document.createElement('q');
+            q.textContent = voice.transcript;
+            transcript.appendChild(q);
+            info.appendChild(transcript);
+        }
+
+        const size = document.createElement('p');
+        size.className = 'meta';
+        size.textContent = 'Size: ' + formatBytes(voice.size);
+        info.appendChild(size);
+
+        card.appendChild(info);
+
+        const actions = document.createElement('div');
+        actions.className = 'voice-actions';
+
+        const downloadBtn = document.createElement('button');
+        downloadBtn.className = 'btn-secondary';
+        downloadBtn.textContent = 'Download';
+        downloadBtn.onclick = () => downloadVoice(voice.name);
+        actions.appendChild(downloadBtn);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'btn-danger';
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.onclick = () => deleteVoice(voice.name);
+        actions.appendChild(deleteBtn);
+
+        card.appendChild(actions);
+        container.appendChild(card);
+    });
+}
+
+async function uploadVoice(e) {
+    e.preventDefault();
+    const form = e.target;
+    const formData = new FormData(form);
+
+    try {
+        const response = await fetch('/api/voices', {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (response.ok && result.success) {
+            form.reset();
+            loadVoices();
+        } else {
+            alert('Error: ' + (result.error || 'Upload failed'));
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+}
+
+function downloadVoice(name) {
+    window.location.href = '/api/voices/' + name + '/download';
+}
+
+async function deleteVoice(name) {
+    if (!confirm('Delete voice "' + name + '"?')) return;
+
+    try {
+        const response = await fetch('/api/voices/' + name, { method: 'DELETE' });
+        const result = await response.json();
+
+        if (result.success) {
+            loadVoices();
+        } else {
+            alert('Error: ' + (result.error || 'Delete failed'));
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+}
+
+function formatBytes(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+async function loadVoiceCache() {
+    try {
+        const response = await fetch('/api/voice-cache');
+        if (!response.ok) throw new Error('Failed to fetch cache stats');
+
+        const data = await response.json();
+        document.getElementById('cache-entries').textContent = data.total_entries;
+        document.getElementById('cache-size').textContent = formatBytes(data.total_size_bytes);
+
+        await loadVoiceCacheEntries();
+    } catch (e) {
+        console.error('Error loading voice cache:', e);
+        document.getElementById('cache-entries').textContent = '0';
+        document.getElementById('cache-size').textContent = '0 B';
+    }
+}
+
+async function loadVoiceCacheEntries() {
+    const container = document.getElementById('voice-cache-list');
+
+    try {
+        const response = await fetch('/api/voice-cache/find?limit=100');
+        if (!response.ok) throw new Error('Failed to fetch cache entries');
+
+        const entries = await response.json();
+
+        if (entries.length === 0) {
+            container.innerHTML = '';
+            const empty = document.createElement('p');
+            empty.className = 'empty';
+            empty.textContent = 'No cached voice lines yet.';
+            container.appendChild(empty);
+            return;
+        }
+
+        container.innerHTML = '';
+        entries.forEach(entry => {
+            const card = document.createElement('div');
+            card.className = 'voice-card';
+
+            const header = document.createElement('div');
+            header.className = 'voice-header';
+
+            const title = document.createElement('h3');
+            title.textContent = entry.text.substring(0, 40) + (entry.text.length > 40 ? '...' : '');
+            header.appendChild(title);
+
+            const badge = document.createElement('span');
+            badge.className = 'badge';
+            badge.textContent = entry.provider;
+            header.appendChild(badge);
+
+            card.appendChild(header);
+
+            const info = document.createElement('div');
+            info.className = 'voice-info';
+
+            const text = document.createElement('p');
+            text.className = 'transcript';
+            const quote = document.createElement('q');
+            quote.textContent = entry.text;
+            text.appendChild(quote);
+            info.appendChild(text);
+
+            const meta = document.createElement('p');
+            meta.className = 'meta';
+            const created = new Date(entry.created_at).toLocaleString();
+            meta.textContent = 'Created: ' + created + ' | Used: ' + entry.usage_count + 'x | ' + entry.duration_ms + 'ms | ' + entry.sample_rate + 'Hz';
+            info.appendChild(meta);
+
+            if (entry.voice_name) {
+                const voiceName = document.createElement('p');
+                voiceName.className = 'meta';
+                voiceName.textContent = 'Voice: ' + entry.voice_name;
+                info.appendChild(voiceName);
+            }
+
+            card.appendChild(info);
+
+            const actions = document.createElement('div');
+            actions.className = 'voice-actions';
+
+            const invalidateBtn = document.createElement('button');
+            invalidateBtn.className = 'btn-danger btn-small';
+            invalidateBtn.textContent = 'Invalidate';
+            invalidateBtn.onclick = function() { invalidateCacheEntry(entry.text_hash); };
+            actions.appendChild(invalidateBtn);
+
+            card.appendChild(actions);
+            container.appendChild(card);
+        });
+    } catch (e) {
+        console.error('Error loading cache entries:', e);
+        container.innerHTML = '<p class="empty">Error loading cache entries.</p>';
+    }
+}
+
+async function invalidateCacheEntry(textHash) {
+    if (!confirm('Invalidate this cache entry?')) return;
+
+    try {
+        const response = await fetch('/api/voice-cache/' + textHash, { method: 'DELETE' });
+        const result = await response.json();
+
+        if (result.success) {
+            showToast('Cache entry invalidated', 'success');
+            loadVoiceCache();
+        } else {
+            showToast('Error: ' + (result.error || 'Invalidate failed'), 'error');
+        }
+    } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+    }
+}
+
+async function clearVoiceCache() {
+    if (!confirm('Clear all voice cache entries? This cannot be undone.')) return;
+
+    try {
+        const response = await fetch('/api/voice-cache', { method: 'DELETE' });
+        const result = await response.json();
+
+        if (result.success) {
+            showToast('Voice cache cleared (' + result.count + ' entries removed)', 'success');
+            loadVoiceCache();
+        } else {
+            showToast('Error: ' + (result.error || 'Clear failed'), 'error');
+        }
+    } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+    }
+}
+
+function showToast(message, type) {
+    const toast = document.createElement('div');
+    toast.className = 'toast ' + type;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    setTimeout(function() { toast.classList.add('show'); }, 10);
+    setTimeout(function() {
+        toast.classList.remove('show');
+        setTimeout(function() { toast.remove(); }, 300);
+    }, 3000);
+}
+
+loadVoices();
+loadVoiceCache();
+</script>
+{% endblock %}

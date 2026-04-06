@@ -1,0 +1,305 @@
+{% extends "layout.html" %}
+
+{% block title %}Vector Memory - LLM AI{% endblock %}
+
+{% block content %}
+<div class="vector-page">
+    <h1>Vector Memory</h1>
+
+    <div class="memory-stats" id="memory-stats">
+        <div class="stat-card">
+            <div class="stat-icon">🧠</div>
+            <div class="stat-info">
+                <h3>Total Memories</h3>
+                <p id="total-memories">Loading...</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">📝</div>
+            <div class="stat-info">
+                <h3>Stored Facts</h3>
+                <p id="total-facts">Loading...</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">🔗</div>
+            <div class="stat-info">
+                <h3>Vector Dimensions</h3>
+                <p id="vector-dims">Loading...</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Semantic Search</h2>
+        <div class="search-container">
+            <div class="search-input-wrapper">
+                <input type="text" id="search-query" placeholder="Search your memory...">
+                <button class="btn-primary" onclick="performSearch()">Search</button>
+            </div>
+            <div class="search-filters">
+                <select id="search-limit">
+                    <option value="5">5 results</option>
+                    <option value="10" selected>10 results</option>
+                    <option value="20">20 results</option>
+                    <option value="50">50 results</option>
+                </select>
+                <select id="search-threshold">
+                    <option value="0.5">Relevance: Low</option>
+                    <option value="0.7" selected>Relevance: Medium</option>
+                    <option value="0.85">Relevance: High</option>
+                    <option value="0.95">Relevance: Very High</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="search-results" class="search-results">
+            <p class="empty">Enter a search query to find related memories</p>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Add Memory</h2>
+        <form id="memory-form" onsubmit="addMemory(event)">
+            <div class="form-group">
+                <label>Memory Content</label>
+                <textarea id="memory-content" rows="3" placeholder="Enter information to remember..." required></textarea>
+            </div>
+            <div class="form-group">
+                <label>Category</label>
+                <select id="memory-category">
+                    <option value="general">General</option>
+                    <option value="preference">Preference</option>
+                    <option value="fact">Fact</option>
+                    <option value="context">Context</option>
+                    <option value="personal">Personal</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Tags (comma-separated)</label>
+                <input type="text" id="memory-tags" placeholder="e.g., user, home, preferences">
+            </div>
+            <button type="submit" class="btn-primary">Add to Memory</button>
+        </form>
+    </div>
+
+    <div class="section">
+        <h2>Recent Memories</h2>
+        <div id="recent-memories" class="memories-list">
+            Loading...
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadMemoryStats() {
+    try {
+        const response = await fetch('/api/memory/stats');
+        const data = await response.json();
+        document.getElementById('total-memories').textContent = data.total_memories || 0;
+        document.getElementById('total-facts').textContent = data.total_facts || 0;
+        document.getElementById('vector-dims').textContent = data.vector_dimensions || 'N/A';
+    } catch (e) {
+        document.getElementById('total-memories').textContent = 'N/A';
+        document.getElementById('total-facts').textContent = 'N/A';
+        document.getElementById('vector-dims').textContent = 'N/A';
+    }
+}
+
+async function loadRecentMemories() {
+    try {
+        const response = await fetch('/api/memory/recent?limit=20');
+        const data = await response.json();
+        renderRecentMemories(data.memories || []);
+    } catch (e) {
+        document.getElementById('recent-memories').innerHTML =
+            '<p class="empty">Error loading memories</p>';
+    }
+}
+
+function renderRecentMemories(memories) {
+    const container = document.getElementById('recent-memories');
+
+    if (memories.length === 0) {
+        container.innerHTML = '<p class="empty">No memories stored yet</p>';
+        return;
+    }
+
+    container.innerHTML = '';
+    memories.forEach(mem => {
+        const card = document.createElement('div');
+        card.className = 'memory-card';
+
+        const header = document.createElement('div');
+        header.className = 'memory-header';
+
+        const title = document.createElement('h4');
+        title.textContent = mem.content ? mem.content.substring(0, 60) + (mem.content.length > 60 ? '...' : '') : 'Memory';
+        header.appendChild(title);
+
+        const badge = document.createElement('span');
+        badge.className = 'badge';
+        badge.textContent = mem.category || 'general';
+        header.appendChild(badge);
+
+        card.appendChild(header);
+
+        const content = document.createElement('p');
+        content.className = 'memory-content';
+        content.textContent = mem.content;
+        card.appendChild(content);
+
+        if (mem.tags && mem.tags.length > 0) {
+            const tags = document.createElement('div');
+            tags.className = 'memory-tags';
+            mem.tags.forEach(tag => {
+                const tagSpan = document.createElement('span');
+                tagSpan.className = 'tag';
+                tagSpan.textContent = tag;
+                tags.appendChild(tagSpan);
+            });
+            card.appendChild(tags);
+        }
+
+        const meta = document.createElement('div');
+        meta.className = 'memory-meta';
+        meta.textContent = 'Relevance: ' + ((mem.relevance || 0.5) * 100).toFixed(0) + '%';
+        if (mem.created_at) {
+            meta.textContent += ' • ' + formatDate(new Date(mem.created_at));
+        }
+        card.appendChild(meta);
+
+        container.appendChild(card);
+    });
+}
+
+async function performSearch() {
+    const query = document.getElementById('search-query').value;
+    const limit = parseInt(document.getElementById('search-limit').value);
+    const threshold = parseFloat(document.getElementById('search-threshold').value);
+
+    if (!query) {
+        alert('Please enter a search query');
+        return;
+    }
+
+    const container = document.getElementById('search-results');
+    container.innerHTML = '<p class="empty">Searching...</p>';
+
+    try {
+        const response = await fetch('/api/memory/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query, limit, threshold })
+        });
+        const data = await response.json();
+        renderSearchResults(data.results || [], query);
+    } catch (e) {
+        container.innerHTML = '<p class="empty">Error performing search</p>';
+    }
+}
+
+function renderSearchResults(results, query) {
+    const container = document.getElementById('search-results');
+
+    if (results.length === 0) {
+        container.innerHTML = '<p class="empty">No matching memories found for "' + query + '"</p>';
+        return;
+    }
+
+    container.innerHTML = '';
+    results.forEach((result, index) => {
+        const card = document.createElement('div');
+        card.className = 'result-card';
+
+        const header = document.createElement('div');
+        header.className = 'result-header';
+
+        const title = document.createElement('h4');
+        title.textContent = 'Result ' + (index + 1);
+        header.appendChild(title);
+
+        const score = document.createElement('span');
+        score.className = 'relevance-score';
+        const relevance = (result.relevance * 100).toFixed(1);
+        score.textContent = relevance + '% match';
+        header.appendChild(score);
+
+        card.appendChild(header);
+
+        const content = document.createElement('p');
+        content.className = 'result-content';
+        content.textContent = result.content || result.text || '';
+        card.appendChild(content);
+
+        if (result.metadata) {
+            const meta = document.createElement('div');
+            meta.className = 'result-meta';
+            if (result.metadata.category) {
+                meta.textContent = 'Category: ' + result.metadata.category;
+            }
+            if (result.metadata.tags) {
+                meta.textContent += result.metadata.category ? ' • ' : '';
+                meta.textContent += 'Tags: ' + result.metadata.tags.join(', ');
+            }
+            if (meta.textContent) card.appendChild(meta);
+        }
+
+        container.appendChild(card);
+    });
+}
+
+async function addMemory(e) {
+    e.preventDefault();
+
+    const content = document.getElementById('memory-content').value;
+    const category = document.getElementById('memory-category').value;
+    const tagsInput = document.getElementById('memory-tags').value;
+    const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()).filter(t => t) : [];
+
+    try {
+        const response = await fetch('/api/memory', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content, category, tags })
+        });
+
+        if (response.ok) {
+            document.getElementById('memory-form').reset();
+            loadMemoryStats();
+            loadRecentMemories();
+            showToast('Memory added successfully', 'success');
+        } else {
+            const err = await response.json();
+            alert('Error: ' + (err.error || 'Failed to add memory'));
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+}
+
+function formatDate(date) {
+    const now = new Date();
+    const diff = now - date;
+    const mins = Math.floor(diff / (1000 * 60));
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return mins + ' min ago';
+    if (hours < 24) return hours + ' hours ago';
+    return date.toLocaleDateString();
+}
+
+document.getElementById('search-query').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        performSearch();
+    }
+});
+
+loadMemoryStats();
+loadRecentMemories();
+</script>
+{% endblock %}

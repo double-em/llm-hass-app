@@ -1,0 +1,384 @@
+{% extends "layout.html" %}
+
+{% block title %}HA Assists - LLM AI{% endblock %}
+
+{% block content %}
+<div class="ha-page">
+    <h1>Home Assistant Assists</h1>
+
+    <div class="ha-status-bar" id="ha-status-bar">
+        <div class="ha-status-indicator" id="ha-connection-status">
+            <span class="indicator offline" id="ha-indicator"></span>
+            <span id="ha-status-text">Checking connection...</span>
+        </div>
+        <div class="ha-info" id="ha-info" style="display: none;">
+            <span id="ha-url"></span>
+            <span class="separator">•</span>
+            <span id="ha-version"></span>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Connection Settings</h2>
+        <form id="ha-settings-form" onsubmit="saveHASettings(event)">
+            <div class="form-group">
+                <label>Home Assistant URL</label>
+                <input type="url" id="ha-url-input" placeholder="http://homeassistant:8123" required>
+                <small>Enter your Home Assistant instance URL</small>
+            </div>
+            <div class="form-group">
+                <label>Long-Lived Access Token</label>
+                <input type="password" id="ha-token-input" placeholder="Enter your access token" required>
+                <small>Generate a token in Home Assistant: Profile → Long-Lived Access Tokens</small>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn-secondary" onclick="testConnection()">Test Connection</button>
+                <button type="submit" class="btn-primary">Save Settings</button>
+            </div>
+        </form>
+        <div id="test-result" class="test-result" style="display: none;"></div>
+    </div>
+
+    <div class="section">
+        <h2>Integration Status</h2>
+        <div class="ha-features" id="ha-features">
+            <div class="feature-card disabled" id="feature-conversation">
+                <div class="feature-icon">💬</div>
+                <div class="feature-info">
+                    <h3>Conversation</h3>
+                    <p>LLM-powered conversation with Home Assistant</p>
+                </div>
+                <span class="feature-status">Disabled</span>
+            </div>
+            <div class="feature-card disabled" id="feature-voice">
+                <div class="feature-icon">🎙️</div>
+                <div class="feature-info">
+                    <h3>Voice Pipeline</h3>
+                    <p>Voice recognition and synthesis</p>
+                </div>
+                <span class="feature-status">Disabled</span>
+            </div>
+            <div class="feature-card disabled" id="feature-intents">
+                <div class="feature-icon">🎯</div>
+                <div class="feature-info">
+                    <h3>Intent Handling</h3>
+                    <p>Custom intent processing</p>
+                </div>
+                <span class="feature-status">Disabled</span>
+            </div>
+            <div class="feature-card disabled" id="feature-sentences">
+                <div class="feature-icon">📝</div>
+                <div class="feature-info">
+                    <h3>Sentence Commands</h3>
+                    <p>Natural language command matching</p>
+                </div>
+                <span class="feature-status">Disabled</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Assist Agents</h2>
+        <div class="agents-list" id="agents-list">
+            <p class="empty">Connect to Home Assistant to view agents</p>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Recent Conversations</h2>
+        <div id="recent-conversations" class="conversations-list">
+            <p class="empty">No recent conversations</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let haConnected = false;
+
+async function checkHAConnection() {
+    try {
+        const response = await fetch('/api/ha/status');
+        const data = await response.json();
+        updateHAStatus(data);
+    } catch (e) {
+        updateHAStatus({ connected: false, error: 'Cannot connect to HA' });
+    }
+}
+
+function updateHAStatus(data) {
+    const indicator = document.getElementById('ha-indicator');
+    const statusText = document.getElementById('ha-status-text');
+    const infoDiv = document.getElementById('ha-info');
+    const urlSpan = document.getElementById('ha-url');
+    const versionSpan = document.getElementById('ha-version');
+
+    haConnected = data.connected || false;
+
+    if (haConnected) {
+        indicator.className = 'indicator online';
+        statusText.textContent = 'Connected';
+        infoDiv.style.display = 'inline';
+        urlSpan.textContent = data.url || 'Home Assistant';
+        versionSpan.textContent = 'v' + (data.version || 'Unknown');
+        updateFeaturesEnabled(true, data.features || {});
+    } else {
+        indicator.className = 'indicator offline';
+        statusText.textContent = data.error || 'Not connected';
+        infoDiv.style.display = 'none';
+        updateFeaturesEnabled(false);
+    }
+}
+
+function updateFeaturesEnabled(enabled, features) {
+    const featureCards = document.querySelectorAll('.feature-card');
+    featureCards.forEach(card => {
+        if (enabled) {
+            card.classList.remove('disabled');
+            card.classList.add('enabled');
+            card.querySelector('.feature-status').textContent = 'Enabled';
+        } else {
+            card.classList.remove('enabled');
+            card.classList.add('disabled');
+            card.querySelector('.feature-status').textContent = 'Disabled';
+        }
+    });
+}
+
+async function loadSavedSettings() {
+    try {
+        const response = await fetch('/api/ha/config');
+        const data = await response.json();
+        if (data.url) document.getElementById('ha-url-input').value = data.url;
+        if (data.token) document.getElementById('ha-token-input').value = data.token;
+    } catch (e) {
+        console.error('Error loading HA settings');
+    }
+}
+
+async function saveHASettings(e) {
+    e.preventDefault();
+
+    const url = document.getElementById('ha-url-input').value;
+    const token = document.getElementById('ha-token-input').value;
+
+    try {
+        const response = await fetch('/api/ha/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, token })
+        });
+
+        if (response.ok) {
+            showToast('Settings saved', 'success');
+            checkHAConnection();
+        } else {
+            const err = await response.json();
+            alert('Error saving settings: ' + (err.error || 'Failed'));
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+}
+
+async function testConnection() {
+    const url = document.getElementById('ha-url-input').value;
+    const token = document.getElementById('ha-token-input').value;
+    const resultDiv = document.getElementById('test-result');
+
+    resultDiv.style.display = 'block';
+    resultDiv.className = 'test-result testing';
+    resultDiv.textContent = 'Testing connection...';
+
+    try {
+        const response = await fetch('/api/ha/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, token })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            resultDiv.className = 'test-result success';
+            resultDiv.innerHTML = '<strong>✓ Connection successful!</strong> Home Assistant is reachable.';
+        } else {
+            resultDiv.className = 'test-result error';
+            resultDiv.innerHTML = '<strong>✗ Connection failed:</strong> ' + (data.error || 'Unknown error');
+        }
+    } catch (e) {
+        resultDiv.className = 'test-result error';
+        resultDiv.innerHTML = '<strong>✗ Connection failed:</strong> ' + e.message;
+    }
+}
+
+async function loadAgents() {
+    if (!haConnected) return;
+
+    try {
+        const response = await fetch('/api/ha/agents');
+        const data = await response.json();
+        renderAgents(data.agents || []);
+    } catch (e) {
+        console.error('Error loading agents');
+    }
+}
+
+function renderAgents(agents) {
+    const container = document.getElementById('agents-list');
+
+    if (agents.length === 0) {
+        container.innerHTML = '<p class="empty">No agents configured</p>';
+        return;
+    }
+
+    container.innerHTML = '';
+    agents.forEach(agent => {
+        const card = document.createElement('div');
+        card.className = 'agent-card';
+
+        const header = document.createElement('div');
+        header.className = 'agent-header';
+
+        const name = document.createElement('h4');
+        name.textContent = agent.name || 'Unnamed Agent';
+        header.appendChild(name);
+
+        const id = document.createElement('span');
+        id.className = 'agent-id';
+        id.textContent = agent.id || '';
+        header.appendChild(id);
+
+        card.appendChild(header);
+
+        const info = document.createElement('div');
+        info.className = 'agent-info';
+
+        if (agent.description) {
+            const desc = document.createElement('p');
+            desc.textContent = agent.description;
+            info.appendChild(desc);
+        }
+
+        if (agent.language) {
+            const lang = document.createElement('p');
+            lang.className = 'meta';
+            lang.textContent = 'Language: ' + agent.language;
+            info.appendChild(lang);
+        }
+
+        card.appendChild(info);
+
+        const actions = document.createElement('div');
+        actions.className = 'agent-actions';
+
+        const converseBtn = document.createElement('button');
+        converseBtn.className = 'btn-primary btn-small';
+        converseBtn.textContent = 'Test Conversation';
+        converseBtn.onclick = () => testAgentConversation(agent.id);
+        actions.appendChild(converseBtn);
+
+        card.appendChild(actions);
+        container.appendChild(card);
+    });
+}
+
+async function testAgentConversation(agentId) {
+    const message = prompt('Enter a test message for the agent:');
+    if (!message) return;
+
+    try {
+        const response = await fetch('/api/ha/converse', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agent_id: agentId, text: message })
+        });
+
+        const data = await response.json();
+        if (data.response) {
+            alert('Agent response:\n\n' + data.response);
+        } else if (data.error) {
+            alert('Error: ' + data.error);
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+}
+
+async function loadRecentConversations() {
+    if (!haConnected) return;
+
+    try {
+        const response = await fetch('/api/ha/conversations?limit=10');
+        const data = await response.json();
+        renderRecentConversations(data.conversations || []);
+    } catch (e) {
+        console.error('Error loading conversations');
+    }
+}
+
+function renderRecentConversations(conversations) {
+    const container = document.getElementById('recent-conversations');
+
+    if (conversations.length === 0) {
+        container.innerHTML = '<p class="empty">No recent conversations</p>';
+        return;
+    }
+
+    container.innerHTML = '';
+    conversations.slice(0, 5).forEach(conv => {
+        const card = document.createElement('div');
+        card.className = 'conversation-card';
+
+        const header = document.createElement('div');
+        header.className = 'conv-header';
+
+        const time = document.createElement('span');
+        time.className = 'conv-time';
+        time.textContent = formatDate(new Date(conv.timestamp || conv.created_at));
+        header.appendChild(time);
+
+        if (conv.agent_id) {
+            const agent = document.createElement('span');
+            agent.className = 'conv-agent';
+            agent.textContent = conv.agent_id;
+            header.appendChild(agent);
+        }
+
+        card.appendChild(header);
+
+        const text = document.createElement('p');
+        text.className = 'conv-text';
+        text.textContent = conv.text || conv.input || '';
+        card.appendChild(text);
+
+        if (conv.response) {
+            const response = document.createElement('p');
+            response.className = 'conv-response';
+            response.textContent = '→ ' + conv.response;
+            card.appendChild(response);
+        }
+
+        container.appendChild(card);
+    });
+}
+
+function formatDate(date) {
+    const now = new Date();
+    const diff = now - date;
+    const mins = Math.floor(diff / (1000 * 60));
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return mins + ' min ago';
+    if (hours < 24) return hours + ' hours ago';
+    return date.toLocaleDateString();
+}
+
+checkHAConnection();
+loadSavedSettings();
+loadAgents();
+loadRecentConversations();
+</script>
+{% endblock %}
