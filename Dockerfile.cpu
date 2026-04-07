@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 # ============================================================================
 # Runtime stage
 # ============================================================================
-FROM gcr.io/distroless/python3-debian11
+FROM python:3.12-slim
 
 # Labels
 LABEL org.opencontainers.image.title="LLM AI Dashboard"
@@ -31,7 +31,7 @@ ENV PYTHONUNBUFFERED=1
 ENV PORT=8000
 
 # Create non-root user
-USER root
+RUN useradd -m -u 1000 appuser
 
 # Create app directory
 WORKDIR /app
@@ -46,13 +46,11 @@ COPY memory/ /app/memory/
 COPY templates/ /app/templates/
 
 # Create data directory
-RUN mkdir -p /data/voices /data/persons /data/samples /data/memory
+RUN mkdir -p /data/voices /data/persons /data/samples /data/memory && \
+    chown -R appuser:appuser /app /data
 
 # Expose port
 EXPOSE 8000
-
-# Run as non-root user
-USER default
 
 # Set Python path
 ENV PATH=/app/.local/bin:$PATH
@@ -61,5 +59,7 @@ ENV PYTHONPATH=/app
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:8000/api/health', timeout=5)"
+
+USER appuser
 
 CMD ["python", "app.py"]
