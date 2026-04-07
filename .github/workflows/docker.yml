@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   packages: write
+  actions: write
 
 jobs:
   build-and-push:
@@ -77,6 +78,8 @@ jobs:
             ghcr.io/double-em/llm-hass-app:latest
             ghcr.io/double-em/llm-hass-app:cpu-${{ steps.version.outputs.VERSION }}
             ghcr.io/double-em/llm-hass-app:cpu-latest
+            ghcr.io/double-em/llm-hass-app-amd64:${{ steps.version.outputs.VERSION }}
+            ghcr.io/double-em/llm-hass-app-amd64:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -91,3 +94,11 @@ jobs:
             ghcr.io/double-em/llm-hass-app:gpu-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Make package public
+        run: |
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            /orgs/double-em/packages/container/llm-hass-app \
+            -f visibility=public
