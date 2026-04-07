@@ -96,6 +96,8 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Make package public
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           gh api \
             --method PATCH \
