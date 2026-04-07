@@ -8,7 +8,6 @@ on:
 permissions:
   contents: read
   packages: write
-  actions: write
 
 jobs:
   build-and-push:
@@ -94,13 +93,3 @@ jobs:
             ghcr.io/double-em/llm-hass-app:gpu-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Make package public
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api \
-            --method PATCH \
-            -H "Accept: application/vnd.github+json" \
-            /orgs/double-em/packages/container/llm-hass-app \
-            -f visibility=public
