@@ -72,7 +72,7 @@ llm_ai_dashboard/         # Home Assistant Addon
 ### Option 2: Standalone Docker (Recommended for Local Development)
 
 Two images are available:
-- **`ghcr.io/double-em/llm-hass-app:cpu-latest`** — CPU-only (default, smaller ~3GB)
+- **`ghcr.io/double-em/llm-hass-app:latest`** — CPU-only (default, smaller ~3GB)
 - **`ghcr.io/double-em/llm-hass-app:gpu-latest`** — CUDA GPU support (requires NVIDIA GPU ~5GB)
 
 ```bash
@@ -80,7 +80,7 @@ Two images are available:
 docker run -d -p 8000:8000 \
   -v $(pwd)/data:/data \
   -e MINIMAX_API_KEY=your_api_key \
-  ghcr.io/double-em/llm-hass-app:cpu-latest
+  ghcr.io/double-em/llm-hass-app:latest
 
 # GPU (requires NVIDIA runtime)
 docker run -d -p 8000:8000 \
@@ -116,7 +116,7 @@ docker run -d -p 8000:8000 \
 ```yaml
 services:
   llm-ai-dashboard:
-    image: ghcr.io/double-em/llm-hass-app:cpu-latest
+    image: ghcr.io/double-em/llm-hass-app:latest
     ports:
       - "8000:8000"
     volumes:

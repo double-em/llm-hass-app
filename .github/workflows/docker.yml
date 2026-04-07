@@ -74,6 +74,7 @@ jobs:
           file: ./Dockerfile.cpu
           push: true
           tags: |
+            ghcr.io/double-em/llm-hass-app:latest
             ghcr.io/double-em/llm-hass-app:cpu-${{ steps.version.outputs.VERSION }}
             ghcr.io/double-em/llm-hass-app:cpu-latest
           cache-from: type=gha
