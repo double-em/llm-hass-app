@@ -67,29 +67,28 @@ jobs:
           fi
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Build and push CPU image
+      - name: Build and push CPU image (multi-arch)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile.cpu
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: |
+            ghcr.io/double-em/llm-hass-app:${{ steps.version.outputs.VERSION }}
             ghcr.io/double-em/llm-hass-app:latest
-            ghcr.io/double-em/llm-hass-app:cpu-${{ steps.version.outputs.VERSION }}
-            ghcr.io/double-em/llm-hass-app:cpu-latest
-            ghcr.io/double-em/llm-hass-app-amd64:${{ steps.version.outputs.VERSION }}
-            ghcr.io/double-em/llm-hass-app-amd64:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build and push GPU image
+      - name: Build and push GPU image (multi-arch)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile.gpu
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: |
-            ghcr.io/double-em/llm-hass-app:gpu-${{ steps.version.outputs.VERSION }}
-            ghcr.io/double-em/llm-hass-app:gpu-latest
+            ghcr.io/double-em/llm-hass-app-gpu:${{ steps.version.outputs.VERSION }}
+            ghcr.io/double-em/llm-hass-app-gpu:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
