@@ -8,7 +8,6 @@ on:
 permissions:
   contents: write
   packages: write
-  pull-requests: write
 
 jobs:
   build-and-push:
@@ -26,7 +25,7 @@ jobs:
           target-branch: main
           release-type: python
           path: .
-          skip-github-release: false
+          skip-github-pull-request: true
 
       - name: Set up Python
         uses: actions/setup-python@v5
