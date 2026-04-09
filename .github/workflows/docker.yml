@@ -17,6 +17,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Semantic Version Bump
+        id: version
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          target-branch: main
+          release-type: python
+          changelog-path: CHANGELOG.md
+          default-branch: main
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -57,16 +67,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract version
-        id: version
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            VERSION="${GITHUB_REF#refs/tags/}"
-          else
-            VERSION="latest"
-          fi
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-
       - name: Build and push CPU image (multi-arch)
         uses: docker/build-push-action@v6
         with:
@@ -77,7 +77,6 @@ jobs:
           tags: |
             ghcr.io/double-em/llm-hass-app:${{ steps.version.outputs.VERSION }}
             ghcr.io/double-em/llm-hass-app:latest
-            ghcr.io/double-em/llm-hass-app:0.1.0
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -91,6 +90,5 @@ jobs:
           tags: |
             ghcr.io/double-em/llm-hass-app-gpu:${{ steps.version.outputs.VERSION }}
             ghcr.io/double-em/llm-hass-app-gpu:latest
-            ghcr.io/double-em/llm-hass-app-gpu:0.1.0
           cache-from: type=gha
           cache-to: type=gha,mode=max
