@@ -67,28 +67,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push CPU image (multi-arch)
+      - name: Build and push CPU image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile.cpu
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           tags: |
             ghcr.io/double-em/llm-hass-app:${{ steps.version.outputs.VERSION || 'latest' }}
             ghcr.io/double-em/llm-hass-app:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build and push GPU image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile.gpu
-          push: true
-          platforms: linux/amd64
-          tags: |
-            ghcr.io/double-em/llm-hass-app-gpu:${{ steps.version.outputs.VERSION || 'latest' }}
-            ghcr.io/double-em/llm-hass-app-gpu:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
