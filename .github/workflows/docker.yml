@@ -6,8 +6,9 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
   packages: write
+  pull-requests: write
 
 jobs:
   build-and-push:
@@ -24,8 +25,8 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           target-branch: main
           release-type: python
-          changelog-path: CHANGELOG.md
-          default-branch: main
+          path: .
+          skip-github-release: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
