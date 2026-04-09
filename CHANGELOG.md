@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.0 (2026-04-09)
+
+
+### Features
+
+* add automatic semantic versioning with release-please ([b79699e](https://github.com/double-em/llm-hass-app/commit/b79699e72751a1ad52ef66eabe35d4d5aeb1054b))
+
+
+### Bug Fixes
+
+* correct release-please inputs and permissions ([828a5b5](https://github.com/double-em/llm-hass-app/commit/828a5b5f35a864e7687a5ab3e58892447a232340))
+
 ## [1.0.0] - 2026-04-05
 
 ### Added
