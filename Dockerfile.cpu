@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 # ============================================================================
 # Build stage
 # ============================================================================
@@ -5,25 +7,26 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
-# Add local bin to PATH for pip-installed scripts
-ENV PATH=/root/.local/bin:$PATH
-
 # Install build dependencies for packages that require compilation
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies
+# Pre-copy requirements for better layer caching
 COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt --no-warn-script-location
+
+# Install dependencies using cache mount (faster rebuilds than --no-cache-dir)
+RUN python -m venv /venv && \
+    /venv/bin/pip install --no-cache-dir -r requirements.txt --no-warn-script-location && \
+    /venv/bin/pip install --no-warn-script-location pip --upgrade
 
 # ============================================================================
 # Runtime stage
 # ============================================================================
 FROM python:3.12-slim
 
-# Build arguments for version injection
+# Build arguments
 ARG VERSION=unknown
 
 # Labels
@@ -32,9 +35,12 @@ LABEL org.opencontainers.image.description="AI Provider management, voice clonin
 LABEL org.opencontainers.image.source="https://github.com/double-em/llm-hass-app"
 LABEL org.opencontainers.image.version="${VERSION}"
 
-# Set environment
+# Environment - reduce image noise
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
 ENV PORT=8000
+ENV PATH=/venv/bin:$PATH
+ENV PYTHONPATH=/app
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser
@@ -42,11 +48,10 @@ RUN useradd -m -u 1000 appuser
 # Create app directory
 WORKDIR /app
 
-# Copy Python packages from builder
-COPY --from=builder /root/.local /app/.local
+# Copy venv from builder (only site-packages + bin, no cache, no docs)
+COPY --from=builder /venv /venv
 
 # Copy application files
-COPY --from=builder /build/requirements.txt /app/
 COPY *.py /app/
 COPY memory/ /app/memory/
 COPY templates/ /app/templates/
@@ -55,14 +60,9 @@ COPY templates/ /app/templates/
 RUN mkdir -p /data/voices /data/persons /data/samples /data/memory && \
     chown -R appuser:appuser /app /data
 
-# Expose port
 EXPOSE 8000
 
-# Set Python path
-ENV PATH=/app/.local/bin:$PATH
-ENV PYTHONPATH=/app
-
-# Health check - uses built-in socket only, no extra imports
+# Health check - socket only, no extra imports
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD python -c "import socket; s=socket.socket(); s.connect(('localhost',8000)); s.close()" || exit 1
 
