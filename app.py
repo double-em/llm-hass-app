@@ -98,8 +98,8 @@ def load_config():
 def load_omnivoice():
     """Load OmniVoice model."""
     global omnivoice_model, omnivoice_client
-    device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
-    dtype = torch.float16 if device != "cpu" else torch.float32
+    device = "cpu"
+    dtype = torch.float32
 
     logger.info(f"Loading OmniVoice on {device}")
     try:

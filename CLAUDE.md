@@ -5,8 +5,8 @@ This file provides guidance to Claude Code when working on llm-hass-app.
 ## Docker Commands (Podman)
 
 ```bash
-# Build CPU image
-podman build -f Dockerfile.cpu -t llm-hass-app:test .
+# Build image
+podman build -t llm-hass-app:test .
 
 # Run with memory limit (required - app loads large models)
 podman run -d -p 8000:8000 --name llm-hass-test --memory=4g llm-hass-app:test

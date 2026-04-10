@@ -72,43 +72,23 @@ llm_ai_dashboard/         # Home Assistant Addon
 ### Option 2: Standalone Docker (Recommended for Local Development)
 
 Two images are available:
-- **`ghcr.io/double-em/llm-hass-app:latest`** — CPU-only (default, smaller ~3GB)
-- **`ghcr.io/double-em/llm-hass-app:gpu-latest`** — CUDA GPU support (requires NVIDIA GPU ~5GB)
+- **`ghcr.io/double-em/llm-hass-app:latest`** — CPU-only (default, ~3GB)
 
 ```bash
-# CPU (default)
 docker run -d -p 8000:8000 \
   -v $(pwd)/data:/data \
   -e MINIMAX_API_KEY=your_api_key \
   ghcr.io/double-em/llm-hass-app:latest
-
-# GPU (requires NVIDIA runtime)
-docker run -d -p 8000:8000 \
-  --gpus all \
-  -v $(pwd)/data:/data \
-  -e MINIMAX_API_KEY=your_api_key \
-  ghcr.io/double-em/llm-hass-app:gpu-latest
-
-# Access at http://localhost:8000
 ```
 
 **Building locally:**
 
 ```bash
-# CPU build
-docker build -f Dockerfile.cpu -t llm-ai-dashboard:cpu .
+docker build -t llm-ai-dashboard .
 docker run -d -p 8000:8000 \
   -v $(pwd)/data:/data \
   -e MINIMAX_API_KEY=your_api_key \
-  llm-ai-dashboard:cpu
-
-# GPU build (requires NVIDIA GPU)
-docker build -f Dockerfile.gpu -t llm-ai-dashboard:gpu .
-docker run -d -p 8000:8000 \
-  --gpus all \
-  -v $(pwd)/data:/data \
-  -e MINIMAX_API_KEY=your_api_key \
-  llm-ai-dashboard:gpu
+  llm-ai-dashboard
 ```
 
 **With Docker Compose:**
@@ -123,16 +103,6 @@ services:
       - ./data:/data
     environment:
       - MINIMAX_API_KEY=your_api_key
-
-  # For GPU support:
-  # image: ghcr.io/double-em/llm-hass-app:gpu-latest
-  # deploy:
-  #   resources:
-  #     reservations:
-  #       devices:
-  #         - driver: nvidia
-  #           count: 1
-  #           capabilities: [gpu]
 ```
 
 **Data persistence:** Voice presets, persons, and memory are stored in `/data` inside the container. Mount a volume to persist data across restarts.
