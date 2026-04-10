@@ -1388,7 +1388,7 @@ def delete_memory_entry(entry_id):
 
 
 @app.route("/api/memory/stats", methods=["GET"])
-def get_memory_stats():
+def get_vector_stats():
     """Get vector memory statistics.
 
     Returns:
@@ -1833,7 +1833,7 @@ def clear_memory_session(session_id):
 
 
 @app.route("/api/memory/sessions/<session_id>/messages", methods=["POST"])
-def add_session_message(session_id):
+def add_memory_session_message(session_id):
     """Add a message to a session and get AI response."""
     if session_id not in memory_sessions:
         return jsonify({"error": f"Session '{session_id}' not found"}), 404
@@ -1899,9 +1899,9 @@ vector_memories = []
 vector_counter = 0
 
 
-@app.route("/api/memory/stats", methods=["GET"])
-def get_memory_stats():
-    """Get vector memory statistics."""
+@app.route("/api/memory/stats/legacy", methods=["GET"])
+def get_memory_stats_legacy():
+    """Get vector memory statistics (legacy in-memory implementation)."""
     return jsonify({
         "total_memories": len(vector_memories),
         "total_facts": len([m for m in vector_memories if m.get("category") == "fact"]),
@@ -2039,7 +2039,7 @@ def ha_status():
 
 
 @app.route("/api/ha/config", methods=["GET"])
-def get_ha_config():
+def get_ha_config_legacy():
     """Get saved HA configuration (without token)."""
     return jsonify({
         "url": ha_config.get("url"),
@@ -2063,7 +2063,7 @@ def save_ha_config():
 
 
 @app.route("/api/ha/test", methods=["POST"])
-def test_ha_connection():
+def test_ha_connection_legacy():
     """Test HA connection."""
     data = request.get_json()
     url = data.get("url", "").rstrip("/")

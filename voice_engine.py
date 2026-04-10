@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 import torchaudio
-from resemblyzer import ResemblyzerVoiceEncoder
+from resemblyzer import VoiceEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class VoiceEncoder:
         """Lazy-load the encoder."""
         if self._encoder is None:
             logger.info("Loading Resemblyzer voice encoder...")
-            self._encoder = ResemblyzerVoiceEncoder()
+            self._encoder = VoiceEncoder()
             logger.info("Resemblyzer voice encoder loaded")
         return self._encoder
 

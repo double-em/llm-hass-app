@@ -45,6 +45,10 @@ ENV PORT=8000
 ENV PATH=/venv/bin:$PATH
 ENV PYTHONPATH=/app
 
+# Install runtime audio dependency (ffmpeg for pydub)
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create non-root user
 RUN useradd -m -u 1000 appuser
 

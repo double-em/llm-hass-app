@@ -97,7 +97,7 @@ class TestVoiceEncoderIdentification:
         mock_encoder = MagicMock()
         mock_encoder.embed_utterance.return_value = np.ones(256)
 
-        with patch('voice_engine.ResemblyzerVoiceEncoder', return_value=mock_encoder):
+        with patch('voice_engine.VoiceEncoder', return_value=mock_encoder):
             from voice_engine import VoiceEncoder
             encoder = VoiceEncoder()
             encoder._encoder = mock_encoder
@@ -118,7 +118,7 @@ class TestVoiceEncoderIdentification:
         mock_encoder = MagicMock()
         mock_encoder.embed_utterance.return_value = np.random.rand(256)
 
-        with patch('voice_engine.ResemblyzerVoiceEncoder', return_value=mock_encoder):
+        with patch('voice_engine.VoiceEncoder', return_value=mock_encoder):
             from voice_engine import VoiceEncoder
             encoder = VoiceEncoder()
             encoder._encoder = mock_encoder
@@ -137,7 +137,7 @@ class TestVoiceEncoderIdentification:
         mock_encoder = MagicMock()
         mock_encoder.embed_utterance.return_value = np.ones(256) * 0.9
 
-        with patch('voice_engine.ResemblyzerVoiceEncoder', return_value=mock_encoder):
+        with patch('voice_engine.VoiceEncoder', return_value=mock_encoder):
             from voice_engine import VoiceEncoder
             encoder = VoiceEncoder()
             encoder._encoder = mock_encoder
@@ -155,7 +155,7 @@ class TestVoiceEncoderIdentification:
         mock_encoder = MagicMock()
         mock_encoder.embed_utterance.return_value = np.ones(256)
 
-        with patch('voice_engine.ResemblyzerVoiceEncoder', return_value=mock_encoder):
+        with patch('voice_engine.VoiceEncoder', return_value=mock_encoder):
             from voice_engine import VoiceEncoder
             encoder = VoiceEncoder()
             encoder._encoder = mock_encoder
@@ -171,7 +171,7 @@ class TestVoiceEncoderIdentification:
         mock_encoder = MagicMock()
         mock_encoder.embed_utterance.return_value = np.ones(256)
 
-        with patch('voice_engine.ResemblyzerVoiceEncoder', return_value=mock_encoder):
+        with patch('voice_engine.VoiceEncoder', return_value=mock_encoder):
             from voice_engine import VoiceEncoder
             encoder = VoiceEncoder()
             encoder._encoder = mock_encoder
@@ -201,7 +201,7 @@ class TestVoiceEncoderVerification:
         mock_encoder = MagicMock()
         mock_encoder.embed_utterance.return_value = np.ones(256)
 
-        with patch('voice_engine.ResemblyzerVoiceEncoder', return_value=mock_encoder):
+        with patch('voice_engine.VoiceEncoder', return_value=mock_encoder):
             from voice_engine import VoiceEncoder
             encoder = VoiceEncoder()
             encoder._encoder = mock_encoder
@@ -217,7 +217,7 @@ class TestVoiceEncoderVerification:
 
     def test_verify_speaker_no_voiceprint(self, sample_wav_file):
         """Test verifying against non-existent voiceprint."""
-        with patch('voice_engine.ResemblyzerVoiceEncoder') as mock_class:
+        with patch('voice_engine.VoiceEncoder') as mock_class:
             from voice_engine import VoiceEncoder
             encoder = VoiceEncoder()
 
@@ -232,7 +232,7 @@ class TestVoiceEncoderVerification:
         mock_encoder = MagicMock()
         mock_encoder.embed_utterance.return_value = np.ones(256)
 
-        with patch('voice_engine.ResemblyzerVoiceEncoder', return_value=mock_encoder):
+        with patch('voice_engine.VoiceEncoder', return_value=mock_encoder):
             from voice_engine import VoiceEncoder
             encoder = VoiceEncoder()
             encoder._encoder = mock_encoder
@@ -258,7 +258,7 @@ class TestVoiceEncoderEdgeCases:
 
     def test_encoder_lazy_loads(self):
         """Test that encoder is lazy-loaded."""
-        with patch('voice_engine.ResemblyzerVoiceEncoder'):
+        with patch('voice_engine.VoiceEncoder'):
             from voice_engine import VoiceEncoder
             encoder = VoiceEncoder()
             assert encoder._encoder is None
@@ -268,7 +268,7 @@ class TestVoiceEncoderEdgeCases:
 
     def test_similarity_returns_float(self):
         """Test that similarity returns a Python float."""
-        with patch('voice_engine.ResemblyzerVoiceEncoder'):
+        with patch('voice_engine.VoiceEncoder'):
             from voice_engine import VoiceEncoder
             encoder = VoiceEncoder()
             result = encoder.similarity(np.ones(256), np.ones(256))
@@ -280,7 +280,7 @@ class TestVoiceEncoderEdgeCases:
         mock_encoder = MagicMock()
         mock_encoder.embed_utterance.return_value = np.ones(256)
 
-        with patch('voice_engine.ResemblyzerVoiceEncoder', return_value=mock_encoder):
+        with patch('voice_engine.VoiceEncoder', return_value=mock_encoder):
             from voice_engine import VoiceEncoder
             encoder = VoiceEncoder()
             encoder._encoder = mock_encoder

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from llm_app.voice_cache import VoiceLineCache
+from voice_cache import VoiceLineCache
 
 
 class VoiceCacheStore:
