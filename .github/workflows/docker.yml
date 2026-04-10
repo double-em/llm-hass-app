@@ -79,3 +79,5 @@ jobs:
             ghcr.io/double-em/llm-hass-app:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ steps.version.outputs.VERSION || 'latest' }}
