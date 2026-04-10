@@ -16,9 +16,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Pre-copy requirements for better layer caching
 COPY requirements.txt .
 
-# Install dependencies using cache mount (faster rebuilds than --no-cache-dir)
+# Install CPU-only PyTorch first (avoids CUDA dependency bloat in CPU image)
 RUN python -m venv /venv && \
-    /venv/bin/pip install --no-cache-dir -r requirements.txt --no-warn-script-location && \
+    /venv/bin/pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
+        torch==2.8.0 torchaudio==2.8.0 --no-warn-script-location && \
+    /venv/bin/pip install --no-cache-dir -r requirements.txt --no-warn-script-location \
+        --ignore-installed torch && \
     /venv/bin/pip install --no-warn-script-location pip --upgrade
 
 # ============================================================================
