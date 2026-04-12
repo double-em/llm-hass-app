@@ -12,7 +12,6 @@ import datetime
 import hashlib
 import io
 import json
-import logging
 import os
 import tempfile
 import uuid
@@ -53,11 +52,29 @@ from voiceprint import VoiceprintManager
 from memory import SessionStore, MessageStore, VectorStore, EmbeddingEngine
 from memory.ha_assists import HAAssistsClient
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from logging_config import configure_logging, get_logger
+from version import __version__
+import traceback
+
+configure_logging()
+logger = get_logger(__name__)
+logger.info(f"app starting version={__version__}")
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
+
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Catch all unhandled exceptions, log traceback, return JSON error."""
+    logger = get_logger("app")
+    logger.exception(f"unhandled exception: {type(e).__name__}: {e}")
+    return jsonify({
+        "error": str(e),
+        "type": type(e).__name__,
+        "traceback": traceback.format_exc()
+    }), 500
+
 
 # Global state
 config = {
@@ -111,36 +128,48 @@ def load_omnivoice():
         omnivoice_client = OmniVoiceClient(omnivoice_model)
         logger.info("OmniVoice model loaded successfully")
     except Exception as e:
-        logger.error(f"Failed to load OmniVoice: {e}")
+        logger.exception("Failed to load OmniVoice")
         raise
 
 
 def load_person_system():
     """Initialize the person system components."""
     global person_store, enrollment_manager, voiceprint_manager
-    person_store = PersonStore()
-    enrollment_manager = EnrollmentManager()
-    voiceprint_manager = VoiceprintManager()
-    logger.info("Person system initialized")
+    try:
+        person_store = PersonStore()
+        enrollment_manager = EnrollmentManager()
+        voiceprint_manager = VoiceprintManager()
+        logger.info("Person system initialized")
+    except Exception as e:
+        logger.exception("Person system init failed")
+        raise
 
 
 def load_memory_system():
     """Initialize the AI memory and vector memory components."""
     global session_store, message_store, vector_store, embedding_engine, ha_assists_client
-    session_store = SessionStore()
-    message_store = MessageStore()
-    embedding_engine = EmbeddingEngine()
-    vector_store = VectorStore()
-    ha_assists_client = HAAssistsClient()
-    logger.info("Memory system initialized")
+    try:
+        session_store = SessionStore()
+        message_store = MessageStore()
+        embedding_engine = EmbeddingEngine()
+        vector_store = VectorStore()
+        ha_assists_client = HAAssistsClient()
+        logger.info("Memory system initialized")
+    except Exception as e:
+        logger.exception("Memory system init failed")
+        raise
 
 
 def load_voice_cache():
     """Initialize the voice line cache."""
     global voice_cache_store
     from voice_cache_store import VoiceCacheStore
-    voice_cache_store = VoiceCacheStore()
-    logger.info("Voice cache initialized")
+    try:
+        voice_cache_store = VoiceCacheStore()
+        logger.info("Voice cache initialized")
+    except Exception as e:
+        logger.exception("Voice cache init failed")
+        raise
 
 
 # ============================================================================
@@ -581,7 +610,7 @@ def generate_omnivoice_tts(data, texts, is_batch=False):
             )
 
     except Exception as e:
-        logger.error(f"TTS generation failed: {e}")
+        logger.exception("TTS generation failed")
         return jsonify({"error": str(e)}), 500
     finally:
         for f in temp_files:
@@ -636,7 +665,7 @@ def _generate_with_preset(texts, preset_name, speed, num_steps, download, embed,
 
             results.append(result)
         except Exception as e:
-            logger.error(f"Preset TTS generation failed: {e}")
+            logger.exception("Preset TTS generation failed")
             return jsonify({"error": str(e)}), 500
 
     # Return response
@@ -962,7 +991,7 @@ def api_add_sample(person_id):
             "samples": samples,
         })
     except Exception as e:
-        logger.error(f"Failed to add sample: {e}")
+        logger.exception("Failed to add sample")
         if sample_path.exists():
             sample_path.unlink()
         return jsonify({"error": str(e)}), 500
@@ -1025,7 +1054,7 @@ def api_identify_speaker():
             result = identify_speaker(tmp_path)
             return jsonify(result)
         except Exception as e:
-            logger.error(f"Speaker identification failed: {e}")
+            logger.exception("Speaker identification failed")
             return jsonify({"error": str(e)}), 500
         finally:
             if os.path.exists(tmp_path):
@@ -1038,7 +1067,7 @@ def api_identify_speaker():
             result = identify_speaker_from_base64(data["audio"])
             return jsonify(result)
         except Exception as e:
-            logger.error(f"Speaker identification failed: {e}")
+            logger.exception("Speaker identification failed")
             return jsonify({"error": str(e)}), 500
 
     return jsonify({"error": "No audio provided"}), 400
@@ -1076,7 +1105,7 @@ def api_verify_speaker():
         result["person"] = person.to_dict()
         return jsonify(result)
     except Exception as e:
-        logger.error(f"Speaker verification failed: {e}")
+        logger.exception("Speaker verification failed")
         return jsonify({"error": str(e)}), 500
 
 
@@ -1585,7 +1614,7 @@ def create_voice_preset():
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
-        logger.error(f"Failed to create preset: {e}")
+        logger.exception("Failed to create preset")
         return jsonify({"error": str(e)}), 500
 
 
