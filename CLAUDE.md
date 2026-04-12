@@ -43,3 +43,13 @@ Function name = endpoint name. Duplicate function names cause `AssertionError: V
 
 - **resemblyzer** exports `VoiceEncoder`, NOT `ResemblyzerVoiceEncoder`
 - **OmniVoice** loads on CPU by default via `device_map="cpu"`
+
+## HA Addon vs GHCR Image
+
+The addon in `doubleem-hass-addons/llm_ai_dashboard/` has its own Dockerfile that clones and builds from source. It does NOT use the pre-built `ghcr.io/double-em/llm-hass-app` image. Both need to be kept in sync.
+
+## GitHub Actions Versioning
+
+- `release-please-action` with `release-type: python` requires `pyproject.toml`/`setup.py` — without them it always outputs `latest`. Use `git describe --tags --abbrev=0` instead.
+- `fetch-depth: 0` required in checkout step for tags to be available to `git describe --tags`
+- Bash `${var#prefix}` doesn't work in `sh` (GitHub Actions default shell) — use `sed 's/^v//'` to strip `v` prefix
