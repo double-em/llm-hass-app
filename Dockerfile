@@ -60,6 +60,7 @@ COPY --from=builder /venv /venv
 
 # Copy application files
 COPY *.py /app/
+RUN echo '__version__ = "'"${VERSION}"'"' > /app/version.py
 COPY memory/ /app/memory/
 COPY templates/ /app/templates/
 
