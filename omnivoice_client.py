@@ -1,14 +1,15 @@
 """OmniVoice client wrapper for the LLM AI Dashboard."""
 
 import io
-import logging
 import tempfile
 from pathlib import Path
 
 import torch
 import torchaudio
 
-logger = logging.getLogger(__name__)
+from logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class OmniVoiceClient:

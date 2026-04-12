@@ -1,13 +1,14 @@
 """Voice preset management for the LLM AI Dashboard."""
 
 import json
-import logging
 from datetime import datetime
 from pathlib import Path
 
 import torchaudio
 
-logger = logging.getLogger(__name__)
+from logging_config import get_logger
+
+logger = get_logger(__name__)
 
 PRESETS_DIR = Path("/data/voice_presets")
 

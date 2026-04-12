@@ -1,7 +1,6 @@
 """Person management with voice enrollment and verification."""
 
 import json
-import logging
 import os
 import shutil
 import uuid
@@ -11,8 +10,9 @@ from pathlib import Path
 import numpy as np
 
 from voice_engine import voice_encoder
+from logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Paths
 DATA_DIR = Path("/data")

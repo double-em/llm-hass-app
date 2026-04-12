@@ -2,7 +2,6 @@
 
 import base64
 import io
-import logging
 import os
 import tempfile
 from pathlib import Path
@@ -11,7 +10,9 @@ import numpy as np
 import torchaudio
 from resemblyzer import VoiceEncoder
 
-logger = logging.getLogger(__name__)
+from logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # Similarity threshold for speaker identification
 IDENTIFICATION_THRESHOLD = 0.75

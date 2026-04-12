@@ -1,12 +1,12 @@
 """Embedding engine using sentence-transformers."""
 
-import logging
+from logging_config import get_logger
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Default model
 DEFAULT_MODEL = "all-MiniLM-L6-v2"

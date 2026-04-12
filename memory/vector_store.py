@@ -1,7 +1,6 @@
 """Vector memory store using ChromaDB for semantic search."""
 
 import json
-import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,7 +8,9 @@ from typing import Optional
 
 import numpy as np
 
-logger = logging.getLogger(__name__)
+from logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class VectorStore:
@@ -51,8 +52,8 @@ class VectorStore:
 
         try:
             return client.get_or_create_collection(name=collection_name)
-        except Exception as e:
-            logger.error(f"Failed to get collection: {e}")
+        except Exception:
+            logger.exception("Failed to get collection")
             return None
 
     def _timestamp(self) -> str:
@@ -110,8 +111,8 @@ class VectorStore:
                         "created_at": now,
                     }]
                 )
-            except Exception as e:
-                logger.error(f"Failed to add to ChromaDB: {e}")
+            except Exception:
+                logger.exception("Failed to add to ChromaDB")
 
         # Save metadata to JSON sidecar
         metadata_file = self.vector_dir / f"{entry_id}.json"
@@ -176,8 +177,8 @@ class VectorStore:
 
             return matches
 
-        except Exception as e:
-            logger.error(f"Search failed: {e}")
+        except Exception:
+            logger.exception("Search failed")
             return []
 
     def delete_entry(self, entry_id: str) -> bool:
@@ -198,8 +199,8 @@ class VectorStore:
         if collection:
             try:
                 collection.delete(ids=[entry_id])
-            except Exception as e:
-                logger.error(f"Failed to delete from ChromaDB: {e}")
+            except Exception:
+                logger.exception("Failed to delete from ChromaDB")
 
         # Remove metadata file
         metadata_file.unlink()

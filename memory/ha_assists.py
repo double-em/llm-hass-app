@@ -1,14 +1,15 @@
 """HA Assists integration for Home Assistant conversation agent."""
 
 import json
-import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 import requests
 
-logger = logging.getLogger(__name__)
+from logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
