@@ -106,9 +106,12 @@ def load_config():
     """Load configuration from options.json."""
     global config
     options_file = Path("/data/options.json")
-    if options_file.exists():
-        with open(options_file) as f:
-            config.update(json.load(f))
+    try:
+        if options_file.exists():
+            with open(options_file) as f:
+                config.update(json.load(f))
+    except (PermissionError, IOError) as e:
+        logger.warning(f"Could not read {options_file}: {e}. Using defaults.")
     logger.info(f"Loaded config: {config}")
 
 
