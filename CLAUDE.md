@@ -53,3 +53,12 @@ The addon in `doubleem-hass-addons/llm_ai_dashboard/` has its own Dockerfile tha
 - `release-please-action` with `release-type: python` requires `pyproject.toml`/`setup.py` — without them it always outputs `latest`. Use `git describe --tags --abbrev=0` instead.
 - `fetch-depth: 0` required in checkout step for tags to be available to `git describe --tags`
 - Bash `${var#prefix}` doesn't work in `sh` (GitHub Actions default shell) — use `sed 's/^v//'` to strip `v` prefix
+
+## HA Addon Development Checklist
+
+- **Always run image locally first** with `podman run --rm --memory=2g ghcr.io/double-em/llm-hass-app:X.Y.Z` to verify startup
+- **Sync ALL of these together** or HA will fail to update: git tag + GHCR image build with `--build-arg VERSION` + GitHub release + addon config.yaml version + addon build.yaml LLM_VERSION
+- **Alpine base causes "exec format error"** with PyTorch — use Debian slim (`python:3.12-slim`) instead
+- **HA may mount /data with root ownership** — handle `PermissionError` on `/data/options.json` gracefully, don't crash on read
+- **`podman system prune -a --force`** clears disk space when build fails with "no space left on device"
+- **Build with `--platform linux/amd64`** otherwise Podman on Apple Silicon builds ARM64 images that HA can't run
