@@ -3,6 +3,7 @@
 Provides a web dashboard and API for:
 - AI Provider management (MiniMax, etc.)
 - Voice cloning and generation (OmniVoice)
+- AI memory with vector embeddings (ChromaDB)
 - TTS synthesis
 """
 
