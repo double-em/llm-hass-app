@@ -17,7 +17,6 @@ permissions:
 
 env:
   HASS_ADDON_REPO: double-em/doubleem-hass-addons
-  VERSION: ${{ github.event.inputs.version || github.ref_name }}
 
 jobs:
   create-release:
@@ -34,20 +33,21 @@ jobs:
         run: |
           if [[ "${{ github.event.inputs.version }}" != "" ]]; then
             # workflow_dispatch input includes 'v' prefix - strip it
-            VERSION="${{ github.event.inputs.version }}"
-            VERSION="${VERSION#v}"
+            VERSION="${GITHUB_EVENT_INPUTS_VERSION#v}"
           else
             # git ref format: refs/tags/v1.0.0
             VERSION=${GITHUB_REF#refs/tags/v}
           fi
           echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "VERSION=${VERSION}"
 
       - name: Generate changelog from commits
         id: changelog
         run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
           CHANGELOG=$(git log --oneline -30)
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo "## Changes in v${{ env.VERSION }}" >> $GITHUB_OUTPUT
+          echo "## Changes in v${VERSION}" >> $GITHUB_OUTPUT
           echo "" >> $GITHUB_OUTPUT
           echo '```' >> $GITHUB_OUTPUT
           echo "$CHANGELOG" >> $GITHUB_OUTPUT
@@ -57,7 +57,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.VERSION }}
+          tag_name: v${{ steps.version.outputs.VERSION }}
           generate_release_notes: false
           body: |
             ## Changes
@@ -66,12 +66,12 @@ jobs:
 
             ## Container Image
 
-            `ghcr.io/double-em/llm-hass-app:${{ env.VERSION }}`
+            `ghcr.io/double-em/llm-hass-app:${{ steps.version.outputs.VERSION }}`
 
             ## Upgrade Notes
 
             - If using HA addon, update to latest version from addon store
-            - HA addon version: ${{ env.VERSION }}
+            - HA addon version: ${{ steps.version.outputs.VERSION }}
           draft: false
           prerelease: false
 
@@ -92,22 +92,23 @@ jobs:
         run: |
           cd ha-addon
 
-          # Get today's date
+          # Get today's date and version (without v prefix)
           TODAY=$(date +%Y-%m-%d)
+          VERSION="${{ steps.version.outputs.VERSION }}"
 
           # Update config.yaml version
-          sed -i 's/version: ".*"/version: "${{ env.VERSION }}"/' llm_ai_dashboard/config.yaml
+          sed -i "s/version: \".*\"/version: \"$VERSION\"/" llm_ai_dashboard/config.yaml
 
           # Update build.yaml LLM_VERSION
-          sed -i 's/LLM_VERSION: ".*"/LLM_VERSION: "${{ env.VERSION }}"/' llm_ai_dashboard/build.yaml
+          sed -i "s/LLM_VERSION: \".*\"/LLM_VERSION: \"$VERSION\"/" llm_ai_dashboard/build.yaml
 
-          # Update CHANGELOG.md - prepend new entry after header line
-          sed -i "2a\\n## [${{ env.VERSION }}] - $TODAY\n\n### Changed\n- Version bump to ${{ env.VERSION }}" llm_ai_dashboard/CHANGELOG.md
+          # Prepend new CHANGELOG entry after header lines (insert after line 3)
+          sed -i "4a\\n## [$VERSION] - $TODAY\n\n### Changed\n- Version bump to $VERSION" llm_ai_dashboard/CHANGELOG.md
 
           # Commit and push
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add -A
           git diff --staged --quiet && echo "No changes to commit" && exit 0
-          git commit -m "chore: sync HA addon version to ${{ env.VERSION }}"
+          git commit -m "chore: sync HA addon version to $VERSION"
           git push
