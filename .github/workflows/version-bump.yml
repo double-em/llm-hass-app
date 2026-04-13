@@ -68,6 +68,12 @@ jobs:
     runs-on: ubuntu-latest
     if: needs.determine-version.outputs.new_version != ''
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
       - name: Create PR
         uses: peter-evans/create-pull-request@v5
         with:
