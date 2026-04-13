@@ -1,11 +1,14 @@
 """Voice line cache store for TTS caching."""
 
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from voice_cache import VoiceLineCache
+
+logger = logging.getLogger(__name__)
 
 
 class VoiceCacheStore:
@@ -15,23 +18,38 @@ class VoiceCacheStore:
         self.data_dir = Path(data_dir)
         self.cache_dir = self.data_dir / "voice_cache"
         self.index_file = self.cache_dir / "index.json"
+        self._permission_error = False
         self._ensure_dirs()
 
     def _ensure_dirs(self):
         """Ensure required directories exist."""
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        if not self.index_file.exists():
-            self._save_index({})
+        try:
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            if not self.index_file.exists():
+                self._save_index({})
+        except PermissionError as e:
+            logger.warning(f"Could not create {self.cache_dir}: {e}. Using in-memory fallback.")
+            self._permission_error = True
 
     def _load_index(self) -> dict:
         """Load cache index."""
-        with open(self.index_file) as f:
-            return json.load(f)
+        try:
+            with open(self.index_file) as f:
+                return json.load(f)
+        except (PermissionError, FileNotFoundError) as e:
+            logger.warning(f"Could not read {self.index_file}: {e}. Returning empty index.")
+            return {}
 
     def _save_index(self, index: dict):
         """Save cache index."""
-        with open(self.index_file, "w") as f:
-            json.dump(index, f, indent=2)
+        if self._permission_error:
+            return
+        try:
+            with open(self.index_file, "w") as f:
+                json.dump(index, f, indent=2)
+        except PermissionError as e:
+            logger.warning(f"Could not write {self.index_file}: {e}. Changes will not persist.")
+            self._permission_error = True
 
     def _timestamp(self) -> str:
         """Get current ISO timestamp."""
@@ -46,16 +64,26 @@ class VoiceCacheStore:
         cache_file = self._get_cache_file(text_hash)
         if not cache_file.exists():
             return None
-        with open(cache_file) as f:
-            data = json.load(f)
-        return VoiceLineCache(**data)
+        try:
+            with open(cache_file) as f:
+                data = json.load(f)
+            return VoiceLineCache(**data)
+        except (PermissionError, FileNotFoundError, json.JSONDecodeError) as e:
+            logger.warning(f"Could not read cache entry {cache_file}: {e}.")
+            return None
 
     def _save_entry(self, entry: VoiceLineCache):
         """Save a cache entry."""
+        if self._permission_error:
+            return
         cache_file = self._get_cache_file(entry.text_hash)
-        cache_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(cache_file, "w") as f:
-            json.dump(entry.to_dict(), f, indent=2)
+        try:
+            cache_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(cache_file, "w") as f:
+                json.dump(entry.to_dict(), f, indent=2)
+        except PermissionError as e:
+            logger.warning(f"Could not write cache entry {cache_file}: {e}. Changes will not persist.")
+            self._permission_error = True
 
     def save(
         self,
@@ -181,7 +209,11 @@ class VoiceCacheStore:
         if not cache_file.exists():
             return False
 
-        cache_file.unlink()
+        try:
+            cache_file.unlink()
+        except PermissionError as e:
+            logger.warning(f"Could not delete {cache_file}: {e}.")
+            return False
 
         # Update index
         index = self._load_index()
@@ -199,8 +231,11 @@ class VoiceCacheStore:
         """
         count = 0
         for cache_file in self.cache_dir.glob("*.json"):
-            cache_file.unlink()
-            count += 1
+            try:
+                cache_file.unlink()
+                count += 1
+            except PermissionError as e:
+                logger.warning(f"Could not delete {cache_file}: {e}.")
 
         self._save_index({})
         return count
@@ -213,7 +248,10 @@ class VoiceCacheStore:
         """
         index = self._load_index()
         total_entries = len(index)
-        total_size = sum(f.stat().st_size for f in self.cache_dir.glob("*.json"))
+        try:
+            total_size = sum(f.stat().st_size for f in self.cache_dir.glob("*.json"))
+        except PermissionError:
+            total_size = 0
 
         return {
             "total_entries": total_entries,

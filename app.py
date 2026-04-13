@@ -144,8 +144,10 @@ def load_person_system():
         voiceprint_manager = VoiceprintManager()
         logger.info("Person system initialized")
     except Exception as e:
-        logger.exception("Person system init failed")
-        raise
+        logger.warning(f"Person system init failed: {e}. Running without person system.")
+        person_store = None
+        enrollment_manager = None
+        voiceprint_manager = None
 
 
 def load_memory_system():
@@ -159,8 +161,12 @@ def load_memory_system():
         ha_assists_client = HAAssistsClient()
         logger.info("Memory system initialized")
     except Exception as e:
-        logger.exception("Memory system init failed")
-        raise
+        logger.warning(f"Memory system init failed: {e}. Running without memory system.")
+        session_store = None
+        message_store = None
+        vector_store = None
+        embedding_engine = None
+        ha_assists_client = None
 
 
 def load_voice_cache():
@@ -171,8 +177,8 @@ def load_voice_cache():
         voice_cache_store = VoiceCacheStore()
         logger.info("Voice cache initialized")
     except Exception as e:
-        logger.exception("Voice cache init failed")
-        raise
+        logger.warning(f"Voice cache init failed: {e}. Running without voice cache.")
+        voice_cache_store = None
 
 
 # ============================================================================
@@ -2194,9 +2200,12 @@ def ha_converse():
 def save_ha_config_to_file():
     """Save HA config to file."""
     config_path = Path("/data/ha_config.json")
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(config_path, "w") as f:
-        json.dump(ha_config, f)
+    try:
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(config_path, "w") as f:
+            json.dump(ha_config, f)
+    except PermissionError as e:
+        logger.warning(f"Could not write {config_path}: {e}. Config will not persist.")
 
 
 def load_ha_config():
@@ -2204,8 +2213,11 @@ def load_ha_config():
     global ha_config
     config_path = Path("/data/ha_config.json")
     if config_path.exists():
-        with open(config_path) as f:
-            ha_config.update(json.load(f))
+        try:
+            with open(config_path) as f:
+                ha_config.update(json.load(f))
+        except (PermissionError, FileNotFoundError, json.JSONDecodeError) as e:
+            logger.warning(f"Could not read {config_path}: {e}. Using defaults.")
 
 
 # ============================================================================
@@ -2215,10 +2227,13 @@ def load_ha_config():
 def save_config():
     """Save configuration to options.json."""
     options_file = Path("/data/options.json")
-    options_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(options_file, "w") as f:
-        json.dump(config, f, indent=2)
-    logger.info("Config saved")
+    try:
+        options_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(options_file, "w") as f:
+            json.dump(config, f, indent=2)
+        logger.info("Config saved")
+    except PermissionError as e:
+        logger.warning(f"Could not write {options_file}: {e}. Config will not persist.")
 
 
 @app.route("/api/config", methods=["GET"])

@@ -1,8 +1,11 @@
 """Person store for managing person records and voice samples."""
 
 import json
+import logging
 import uuid
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class PersonStore:
@@ -11,23 +14,38 @@ class PersonStore:
     def __init__(self, data_dir: str = "/data"):
         self.data_dir = Path(data_dir)
         self.persons_file = self.data_dir / "persons.json"
+        self._permission_error = False
         self._ensure_data_dir()
 
     def _ensure_data_dir(self):
         """Ensure data directory exists."""
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        if not self.persons_file.exists():
-            self._save([])
+        try:
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+            if not self.persons_file.exists():
+                self._save([])
+        except PermissionError as e:
+            logger.warning(f"Could not create {self.persons_file}: {e}. Using in-memory fallback.")
+            self._permission_error = True
 
     def _load(self) -> list:
         """Load persons from JSON file."""
-        with open(self.persons_file) as f:
-            return json.load(f)
+        try:
+            with open(self.persons_file) as f:
+                return json.load(f)
+        except (PermissionError, FileNotFoundError) as e:
+            logger.warning(f"Could not read {self.persons_file}: {e}. Returning empty list.")
+            return []
 
     def _save(self, persons: list):
         """Save persons to JSON file."""
-        with open(self.persons_file, "w") as f:
-            json.dump(persons, f, indent=2)
+        if self._permission_error:
+            return
+        try:
+            with open(self.persons_file, "w") as f:
+                json.dump(persons, f, indent=2)
+        except PermissionError as e:
+            logger.warning(f"Could not write {self.persons_file}: {e}. Changes will not persist.")
+            self._permission_error = True
 
     def create_person(self, name: str) -> dict:
         """Create a new person record.

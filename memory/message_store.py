@@ -1,10 +1,13 @@
 """Message store for conversation messages."""
 
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class MessageStore:
@@ -13,6 +16,7 @@ class MessageStore:
     def __init__(self, data_dir: str = "/data"):
         self.data_dir = Path(data_dir)
         self.sessions_dir = self.data_dir / "sessions"
+        self._permission_error = False
 
     def _timestamp(self) -> str:
         """Get current ISO timestamp."""
@@ -27,15 +31,25 @@ class MessageStore:
         messages_file = self._get_messages_file(session_id)
         if not messages_file.exists():
             return []
-        with open(messages_file) as f:
-            return json.load(f)
+        try:
+            with open(messages_file) as f:
+                return json.load(f)
+        except (PermissionError, FileNotFoundError, json.JSONDecodeError) as e:
+            logger.warning(f"Could not read {messages_file}: {e}. Returning empty list.")
+            return []
 
     def _save_messages(self, session_id: str, messages: list):
         """Save messages for a session."""
+        if self._permission_error:
+            return
         messages_file = self._get_messages_file(session_id)
-        messages_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(messages_file, "w") as f:
-            json.dump(messages, f, indent=2)
+        try:
+            messages_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(messages_file, "w") as f:
+                json.dump(messages, f, indent=2)
+        except PermissionError as e:
+            logger.warning(f"Could not write {messages_file}: {e}. Changes will not persist.")
+            self._permission_error = True
 
     def add_message(
         self,
@@ -174,5 +188,9 @@ class MessageStore:
         if not messages_file.exists():
             return False
 
-        messages_file.unlink()
+        try:
+            messages_file.unlink()
+        except PermissionError as e:
+            logger.warning(f"Could not delete {messages_file}: {e}.")
+            return False
         return True

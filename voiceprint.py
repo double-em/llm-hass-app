@@ -1,9 +1,13 @@
 """Voiceprint manager for creating and comparing voice embeddings."""
 
+import logging
+
 import numpy as np
 import torch
 import torchaudio
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class VoiceprintManager:
@@ -14,7 +18,12 @@ class VoiceprintManager:
     def __init__(self, data_dir: str = "/data"):
         self.data_dir = Path(data_dir)
         self.voiceprints_dir = self.data_dir / "voiceprints"
-        self.voiceprints_dir.mkdir(parents=True, exist_ok=True)
+        self._permission_error = False
+        try:
+            self.voiceprints_dir.mkdir(parents=True, exist_ok=True)
+        except PermissionError as e:
+            logger.warning(f"Could not create {self.voiceprints_dir}: {e}. Using in-memory fallback.")
+            self._permission_error = True
 
     def _get_voiceprint_path(self, person_id: str) -> Path:
         """Get path for a person's voiceprint file."""
@@ -93,7 +102,11 @@ class VoiceprintManager:
 
         # Save
         output_path = self._get_voiceprint_path(person_id)
-        np.save(output_path, voiceprint)
+        try:
+            np.save(output_path, voiceprint)
+        except PermissionError as e:
+            logger.warning(f"Could not save voiceprint {output_path}: {e}. Changes will not persist.")
+            self._permission_error = True
 
         return str(output_path)
 

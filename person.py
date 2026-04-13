@@ -19,6 +19,17 @@ DATA_DIR = Path("/data")
 VOICEPRINTS_DIR = DATA_DIR / "voiceprints"
 PERSONS_FILE = DATA_DIR / "persons.json"
 
+# Module-level permission error flag
+_permission_error = False
+
+
+def _handle_permission_error(op: str, path: Path, e: PermissionError):
+    """Handle permission error for filesystem operations."""
+    global _permission_error
+    logger.warning(f"Could not {op} {path}: {e}. Using in-memory fallback.")
+    _permission_error = True
+
+
 # Verification threshold
 VERIFICATION_THRESHOLD = 0.75
 
@@ -72,7 +83,12 @@ class Person:
 
 def _ensure_dirs():
     """Ensure required directories exist."""
-    VOICEPRINTS_DIR.mkdir(parents=True, exist_ok=True)
+    global _permission_error
+    try:
+        VOICEPRINTS_DIR.mkdir(parents=True, exist_ok=True)
+    except PermissionError as e:
+        logger.warning(f"Could not create {VOICEPRINTS_DIR}: {e}. Using in-memory fallback.")
+        _permission_error = True
 
 
 def _load_persons():
@@ -80,16 +96,27 @@ def _load_persons():
     if not PERSONS_FILE.exists():
         return []
 
-    with open(PERSONS_FILE) as f:
-        data = json.load(f)
-        return [Person.from_dict(p) for p in data]
+    try:
+        with open(PERSONS_FILE) as f:
+            data = json.load(f)
+            return [Person.from_dict(p) for p in data]
+    except (PermissionError, FileNotFoundError, json.JSONDecodeError) as e:
+        logger.warning(f"Could not read {PERSONS_FILE}: {e}. Returning empty list.")
+        return []
 
 
 def _save_persons(persons):
     """Save persons to JSON file."""
+    global _permission_error
+    if _permission_error:
+        return
     _ensure_dirs()
-    with open(PERSONS_FILE, "w") as f:
-        json.dump([p.to_dict() for p in persons], f, indent=2)
+    try:
+        with open(PERSONS_FILE, "w") as f:
+            json.dump([p.to_dict() for p in persons], f, indent=2)
+    except PermissionError as e:
+        logger.warning(f"Could not write {PERSONS_FILE}: {e}. Changes will not persist.")
+        _permission_error = True
 
 
 def _get_person_by_id(persons, person_id):
@@ -207,11 +234,19 @@ def _add_enrollment_sample(person, audio_path):
 
     # Copy sample to voiceprints directory
     sample_dir = VOICEPRINTS_DIR / person.id
-    sample_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        sample_dir.mkdir(parents=True, exist_ok=True)
+    except PermissionError as e:
+        logger.warning(f"Could not create sample directory {sample_dir}: {e}.")
+        raise ValueError(f"Could not create sample directory: {e}")
 
     sample_idx = len(person.enrolled_samples)
     sample_dest = sample_dir / f"sample_{sample_idx}.wav"
-    shutil.copy2(audio_path, sample_dest)
+    try:
+        shutil.copy2(audio_path, sample_dest)
+    except PermissionError as e:
+        logger.warning(f"Could not copy sample to {sample_dest}: {e}.")
+        raise ValueError(f"Could not save sample: {e}")
 
     person.enrolled_samples.append(str(sample_dest))
 
@@ -238,8 +273,11 @@ def _update_voiceprint(person):
     voiceprint = np.mean(embeddings, axis=0)
 
     # Save voiceprint
-    np.save(person.voiceprint_path, voiceprint)
-    logger.info(f"Updated voiceprint for {person.id} from {len(embeddings)} samples")
+    try:
+        np.save(person.voiceprint_path, voiceprint)
+        logger.info(f"Updated voiceprint for {person.id} from {len(embeddings)} samples")
+    except PermissionError as e:
+        logger.warning(f"Could not save voiceprint {person.voiceprint_path}: {e}.")
 
 
 def verify_match(audio_path, person):

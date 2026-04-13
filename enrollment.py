@@ -1,8 +1,11 @@
 """Enrollment manager for voiceprint enrollment flow."""
 
 import json
+import logging
 import uuid
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class EnrollmentManager:
@@ -14,11 +17,16 @@ class EnrollmentManager:
     def __init__(self, data_dir: str = "/data"):
         self.data_dir = Path(data_dir)
         self.enrollments_dir = self.data_dir / "enrollments"
+        self._permission_error = False
         self._ensure_dirs()
 
     def _ensure_dirs(self):
         """Ensure required directories exist."""
-        self.enrollments_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.enrollments_dir.mkdir(parents=True, exist_ok=True)
+        except PermissionError as e:
+            logger.warning(f"Could not create {self.enrollments_dir}: {e}. Using in-memory fallback.")
+            self._permission_error = True
 
     def _get_enrollment_path(self, enrollment_id: str) -> Path:
         """Get path for enrollment state file."""
@@ -29,14 +37,24 @@ class EnrollmentManager:
         path = self._get_enrollment_path(enrollment_id)
         if not path.exists():
             return None
-        with open(path) as f:
-            return json.load(f)
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except (PermissionError, FileNotFoundError, json.JSONDecodeError) as e:
+            logger.warning(f"Could not read {path}: {e}.")
+            return None
 
     def _save_enrollment(self, enrollment: dict):
         """Save enrollment state."""
+        if self._permission_error:
+            return
         path = self._get_enrollment_path(enrollment["id"])
-        with open(path, "w") as f:
-            json.dump(enrollment, f, indent=2)
+        try:
+            with open(path, "w") as f:
+                json.dump(enrollment, f, indent=2)
+        except PermissionError as e:
+            logger.warning(f"Could not write {path}: {e}. Changes will not persist.")
+            self._permission_error = True
 
     def _timestamp(self) -> str:
         """Get current ISO timestamp."""
@@ -153,7 +171,10 @@ class EnrollmentManager:
 
         # Delete enrollment file
         path = self._get_enrollment_path(enrollment_id)
-        path.unlink()
+        try:
+            path.unlink()
+        except PermissionError as e:
+            logger.warning(f"Could not delete {path}: {e}.")
         return True
 
     def get_enrollment(self, enrollment_id: str) -> dict | None:
@@ -180,8 +201,12 @@ class EnrollmentManager:
             return None
 
         for path in self.enrollments_dir.glob("*.json"):
-            with open(path) as f:
-                enrollment = json.load(f)
-                if enrollment["person_id"] == person_id:
-                    return enrollment
+            try:
+                with open(path) as f:
+                    enrollment = json.load(f)
+                    if enrollment["person_id"] == person_id:
+                        return enrollment
+            except (PermissionError, FileNotFoundError, json.JSONDecodeError) as e:
+                logger.warning(f"Could not read {path}: {e}.")
+                continue
         return None

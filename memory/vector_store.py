@@ -19,13 +19,18 @@ class VectorStore:
     def __init__(self, data_dir: str = "/data"):
         self.data_dir = Path(data_dir)
         self.vector_dir = self.data_dir / "vector_memory"
+        self._permission_error = False
         self._ensure_dirs()
         self._chroma_client = None
         self._collection = None
 
     def _ensure_dirs(self):
         """Ensure required directories exist."""
-        self.vector_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.vector_dir.mkdir(parents=True, exist_ok=True)
+        except PermissionError as e:
+            logger.warning(f"Could not create {self.vector_dir}: {e}. Using in-memory fallback.")
+            self._permission_error = True
 
     def _get_chroma_client(self):
         """Get or create ChromaDB client."""
@@ -116,8 +121,11 @@ class VectorStore:
 
         # Save metadata to JSON sidecar
         metadata_file = self.vector_dir / f"{entry_id}.json"
-        with open(metadata_file, "w") as f:
-            json.dump(entry, f, indent=2)
+        try:
+            with open(metadata_file, "w") as f:
+                json.dump(entry, f, indent=2)
+        except PermissionError as e:
+            logger.warning(f"Could not write {metadata_file}: {e}. Entry not persisted.")
 
         return entry
 
@@ -203,7 +211,10 @@ class VectorStore:
                 logger.exception("Failed to delete from ChromaDB")
 
         # Remove metadata file
-        metadata_file.unlink()
+        try:
+            metadata_file.unlink()
+        except PermissionError as e:
+            logger.warning(f"Could not delete {metadata_file}: {e}.")
         return True
 
     def _load_entry(self, entry_id: str) -> Optional[dict]:
@@ -211,8 +222,12 @@ class VectorStore:
         metadata_file = self.vector_dir / f"{entry_id}.json"
         if not metadata_file.exists():
             return None
-        with open(metadata_file) as f:
-            return json.load(f)
+        try:
+            with open(metadata_file) as f:
+                return json.load(f)
+        except (PermissionError, FileNotFoundError, json.JSONDecodeError) as e:
+            logger.warning(f"Could not read {metadata_file}: {e}.")
+            return None
 
     def list_entries(
         self,

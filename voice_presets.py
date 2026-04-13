@@ -28,7 +28,12 @@ class VoicePresetManager:
             presets_dir: Custom presets directory path.
         """
         self.presets_dir = Path(presets_dir) if presets_dir else PRESETS_DIR
-        self.presets_dir.mkdir(parents=True, exist_ok=True)
+        self._permission_error = False
+        try:
+            self.presets_dir.mkdir(parents=True, exist_ok=True)
+        except PermissionError as e:
+            logger.warning(f"Could not create {self.presets_dir}: {e}. Using in-memory fallback.")
+            self._permission_error = True
 
     def save_preset(self, audio, name, description="", ref_text="", instruct="", tags=None):
         """Save audio as a voice preset.
@@ -44,6 +49,9 @@ class VoicePresetManager:
         Returns:
             dict: Saved preset metadata.
         """
+        if self._permission_error:
+            raise ValueError("Preset storage unavailable due to permission error")
+
         audio_path = self.presets_dir / f"{name}.wav"
         metadata_path = self.presets_dir / f"{name}.json"
 
@@ -51,7 +59,10 @@ class VoicePresetManager:
             raise ValueError(f"Preset '{name}' already exists")
 
         # Save audio
-        torchaudio.save(str(audio_path), audio[0] if audio.dim() == 2 else audio, 24000, format="wav")
+        try:
+            torchaudio.save(str(audio_path), audio[0] if audio.dim() == 2 else audio, 24000, format="wav")
+        except PermissionError as e:
+            raise ValueError(f"Could not save preset audio: {e}")
 
         # Create metadata
         metadata = {
@@ -65,8 +76,12 @@ class VoicePresetManager:
         }
 
         # Save metadata
-        with open(metadata_path, "w") as f:
-            json.dump(metadata, f, indent=2)
+        try:
+            with open(metadata_path, "w") as f:
+                json.dump(metadata, f, indent=2)
+        except PermissionError as e:
+            logger.warning(f"Could not save preset metadata {metadata_path}: {e}. Audio may exist without metadata.")
+            self._permission_error = True
 
         logger.info(f"Saved preset '{name}'")
         return metadata
@@ -84,8 +99,12 @@ class VoicePresetManager:
         if not metadata_path.exists():
             return None
 
-        with open(metadata_path) as f:
-            return json.load(f)
+        try:
+            with open(metadata_path) as f:
+                return json.load(f)
+        except (PermissionError, FileNotFoundError, json.JSONDecodeError) as e:
+            logger.warning(f"Could not read preset {metadata_path}: {e}.")
+            return None
 
     def list_presets(self):
         """List all available presets.
@@ -136,6 +155,10 @@ class VoicePresetManager:
         Returns:
             dict: Updated metadata or None if preset not found.
         """
+        if self._permission_error:
+            logger.warning("Preset update unavailable due to permission error.")
+            return None
+
         metadata = self.load_preset(name)
         if metadata is None:
             return None
@@ -146,8 +169,13 @@ class VoicePresetManager:
             metadata["tags"] = tags
 
         metadata_path = self.presets_dir / f"{name}.json"
-        with open(metadata_path, "w") as f:
-            json.dump(metadata, f, indent=2)
+        try:
+            with open(metadata_path, "w") as f:
+                json.dump(metadata, f, indent=2)
+        except PermissionError as e:
+            logger.warning(f"Could not update preset {metadata_path}: {e}.")
+            self._permission_error = True
+            return None
 
         return metadata
 

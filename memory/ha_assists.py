@@ -33,27 +33,38 @@ class HAAssistsClient:
         self.data_dir = Path(data_dir)
         self.config_file = self.data_dir / "ha_assists_config.json"
         self._config: Optional[HAAssistsConfig] = None
+        self._permission_error = False
         self._load_config()
 
     def _load_config(self):
         """Load HA Assists configuration."""
-        if self.config_file.exists():
-            with open(self.config_file) as f:
-                data = json.load(f)
-                self._config = HAAssistsConfig(**data)
-        else:
+        try:
+            if self.config_file.exists():
+                with open(self.config_file) as f:
+                    data = json.load(f)
+                    self._config = HAAssistsConfig(**data)
+            else:
+                self._config = HAAssistsConfig()
+        except (PermissionError, FileNotFoundError, json.JSONDecodeError) as e:
+            logger.warning(f"Could not read {self.config_file}: {e}. Using defaults.")
             self._config = HAAssistsConfig()
 
     def _save_config(self):
         """Save HA Assists configuration."""
-        with open(self.config_file, "w") as f:
-            json.dump({
-                "enabled": self._config.enabled,
-                "ha_url": self._config.ha_url,
-                "ha_token": self._config.ha_token,
-                "agent_id": self._config.agent_id,
-                "capabilities": self._config.capabilities,
-            }, f, indent=2)
+        if self._permission_error:
+            return
+        try:
+            with open(self.config_file, "w") as f:
+                json.dump({
+                    "enabled": self._config.enabled,
+                    "ha_url": self._config.ha_url,
+                    "ha_token": self._config.ha_token,
+                    "agent_id": self._config.agent_id,
+                    "capabilities": self._config.capabilities,
+                }, f, indent=2)
+        except PermissionError as e:
+            logger.warning(f"Could not write {self.config_file}: {e}. Config changes will not persist.")
+            self._permission_error = True
 
     @property
     def config(self) -> HAAssistsConfig:
