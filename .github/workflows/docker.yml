@@ -31,6 +31,7 @@ jobs:
 
       - name: Create llm_app package for tests
         run: |
+          rm -rf llm_app
           mkdir -p llm_app
           touch llm_app/__init__.py
           ln -s ../voice_cache.py llm_app/voice_cache.py
