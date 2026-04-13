@@ -26,9 +26,12 @@ jobs:
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           if [ -z "$LAST_TAG" ]; then
             echo "commits=$(git log --oneline -20 | tr '\n' ' ')" >> $GITHUB_OUTPUT
+            echo "No previous tag found, using last 20 commits"
           else
+            echo "Last tag: $LAST_TAG"
             echo "commits=$(git log $LAST_TAG..HEAD --oneline | tr '\n' ' ')" >> $GITHUB_OUTPUT
           fi
+          echo "Commits output: ${{ steps.commits.outputs.commits }}"
 
       - name: Determine bump type
         id: bump
@@ -49,10 +52,16 @@ jobs:
         if: steps.bump.outputs.bump != 'none'
         run: |
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          LAST_NUM=$(echo $LAST_TAG | sed 's/v//')
-          MAJOR=$(echo $LAST_NUM | cut -d. -f1)
-          MINOR=$(echo $LAST_NUM | cut -d. -f2)
-          PATCH=$(echo $LAST_NUM | cut -d. -f3)
+          # Strip leading v if present
+          LAST_NUM=$(echo "$LAST_TAG" | sed 's/^v//')
+          # Validate we have valid semver parts
+          if ! echo "$LAST_NUM" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Error: Invalid tag format '$LAST_TAG' -> '$LAST_NUM'"
+            exit 1
+          fi
+          MAJOR=$(echo "$LAST_NUM" | cut -d. -f1)
+          MINOR=$(echo "$LAST_NUM" | cut -d. -f2)
+          PATCH=$(echo "$LAST_NUM" | cut -d. -f3)
 
           case "${{ steps.bump.outputs.bump }}" in
             major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
@@ -60,7 +69,9 @@ jobs:
             patch) PATCH=$((PATCH + 1)) ;;
           esac
 
-          echo "new_version=v${MAJOR}.${MINOR}.${PATCH}" >> $GITHUB_OUTPUT
+          NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "new_version=${NEW_VERSION}" >> $GITHUB_OUTPUT
+          echo "Creating tag: $NEW_VERSION"
 
   create-tag:
     needs: determine-version
