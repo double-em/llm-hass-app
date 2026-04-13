@@ -1,3 +1,5 @@
+# Release workflow for llm-hass-app
+# Creates GitHub releases and syncs HA addon versions
 name: Release
 
 on:
