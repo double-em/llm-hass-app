@@ -7,6 +7,11 @@ on:
 
 permissions:
   contents: write
+  packages: write
+
+env:
+  HASS_ADDON_REPO: double-em/doubleem-hass-addons
+  VERSION: ${{ github.ref_name }}
 
 jobs:
   create-release:
@@ -18,9 +23,72 @@ jobs:
           fetch-tags: true
           fetch-depth: 0
 
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog from commits
+        id: changelog
+        run: |
+          CHANGELOG=$(git log --oneline -30)
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "## Changes in v${{ env.VERSION }}" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo '```' >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo '```' >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          tag_name: v${{ env.VERSION }}
+          generate_release_notes: false
+          body: |
+            ## Changes
+
+            ${{ steps.changelog.outputs.changelog }}
+
+            ## Container Image
+
+            `ghcr.io/double-em/llm-hass-app:${{ env.VERSION }}`
+
+            ## Upgrade Notes
+
+            - If using HA addon, update to latest version from addon store
+            - HA addon version: ${{ env.VERSION }}
           draft: false
           prerelease: false
+
+  sync-ha-addon:
+    needs: create-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout HA addon repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.HASS_ADDON_REPO }}
+          path: ha-addon
+          token: ${{ secrets.HA_ADDON_PAT }}
+
+      - name: Update version in HA addon
+        run: |
+          cd ha-addon
+
+          # Update config.yaml version
+          sed -i 's/version: ".*"/version: "${{ env.VERSION }}"/' llm_ai_dashboard/config.yaml
+
+          # Update build.yaml LLM_VERSION
+          sed -i 's/LLM_VERSION: ".*"/LLM_VERSION: "${{ env.VERSION }}"/' llm_ai_dashboard/build.yaml
+
+          # Commit and push
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add -A
+          git diff --staged --quiet && echo "No changes to commit" && exit 0
+          git commit -m "chore: sync HA addon version to ${{ env.VERSION }}"
+          git push
