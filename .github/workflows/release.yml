@@ -33,16 +33,23 @@ jobs:
       - name: Extract version
         id: version
         run: |
+          INPUT_VERSION="${{ github.event.inputs.version }}"
+          REF="$GITHUB_REF"
+
+          echo "Input version: '$INPUT_VERSION'"
+          echo "Git ref: '$REF'"
+
           VERSION=""
-          if [[ "${{ github.event.inputs.version }}" != "" ]]; then
+          if [[ "$INPUT_VERSION" != "" ]]; then
             # workflow_dispatch input includes 'v' prefix - strip it
-            VERSION="${GITHUB_EVENT_INPUTS_VERSION#v}"
-          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION="${INPUT_VERSION#v}"
+          elif [[ "$REF" == refs/tags/* ]]; then
             # git ref format: refs/tags/v1.0.0
-            VERSION="${GITHUB_REF#refs/tags/}"
+            VERSION="${REF#refs/tags/}"
           fi
+
+          echo "Extracted version: '$VERSION'"
           echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
-          echo "VERSION=${VERSION}"
 
       - name: Generate changelog from commits
         id: changelog
@@ -77,6 +84,8 @@ jobs:
             - HA addon version: ${{ steps.version.outputs.VERSION }}
           draft: false
           prerelease: false
+          # Only create tag if it doesn't exist (for workflow_dispatch)
+          create_only: ${{ github.event.inputs.version != '' }}
 
   sync-ha-addon:
     needs: create-release
