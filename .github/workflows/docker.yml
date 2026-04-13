@@ -56,8 +56,13 @@ jobs:
       - name: Get version from git tags
         id: version
         run: |
-          VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "latest")
-          VERSION=$(echo "$VERSION" | sed 's/^v//')
+          # For tag pushes (refs/tags/v1.2.3), extract version
+          # For branch pushes, use "latest"
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="latest"
+          fi
           echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
           echo "Tag: $VERSION"
 
