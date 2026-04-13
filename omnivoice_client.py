@@ -173,7 +173,7 @@ class OmniVoiceClient:
         """Convert audio tensor to WAV bytes.
 
         Args:
-            audio: Audio tensor.
+            audio: Audio tensor or list of tensors.
             sample_rate: Sample rate (defaults to 24000).
 
         Returns:
@@ -181,6 +181,10 @@ class OmniVoiceClient:
         """
         if sample_rate is None:
             sample_rate = self.sample_rate
+
+        # Handle list of tensors (OmniVoice may return list)
+        if isinstance(audio, list):
+            audio = audio[0]
 
         buffer = io.BytesIO()
         torchaudio.save(buffer, audio[0] if audio.dim() == 2 else audio, sample_rate, format="wav")

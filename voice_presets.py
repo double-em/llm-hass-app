@@ -58,6 +58,10 @@ class VoicePresetManager:
         if audio_path.exists():
             raise ValueError(f"Preset '{name}' already exists")
 
+        # Handle list of tensors (OmniVoice may return list)
+        if isinstance(audio, list):
+            audio = audio[0]
+
         # Save audio
         try:
             torchaudio.save(str(audio_path), audio[0] if audio.dim() == 2 else audio, 24000, format="wav")
