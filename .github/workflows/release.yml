@@ -98,6 +98,16 @@ jobs:
           # Update build.yaml LLM_VERSION
           sed -i 's/LLM_VERSION: ".*"/LLM_VERSION: "${{ env.VERSION }}"/' llm_ai_dashboard/build.yaml
 
+          # Update CHANGELOG.md
+          TODAY=$(date +%Y-%m-%d)
+          CHANGELOG_ENTRY="## [${{ env.VERSION }}] - $TODAY
+
+### Changed
+- Version bump to ${{ env.VERSION }}
+"
+          # Prepend new entry after the header
+          sed -i "/^## \[/i $CHANGELOG_ENTRY" llm_ai_dashboard/CHANGELOG.md
+
           # Commit and push
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
