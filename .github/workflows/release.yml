@@ -33,12 +33,13 @@ jobs:
       - name: Extract version
         id: version
         run: |
+          VERSION=""
           if [[ "${{ github.event.inputs.version }}" != "" ]]; then
             # workflow_dispatch input includes 'v' prefix - strip it
             VERSION="${GITHUB_EVENT_INPUTS_VERSION#v}"
-          else
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
             # git ref format: refs/tags/v1.0.0
-            VERSION=${GITHUB_REF#refs/tags/v}
+            VERSION="${GITHUB_REF#refs/tags/}"
           fi
           echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
           echo "VERSION=${VERSION}"
