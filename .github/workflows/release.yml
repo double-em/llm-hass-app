@@ -84,8 +84,6 @@ jobs:
             - HA addon version: ${{ steps.version.outputs.VERSION }}
           draft: false
           prerelease: false
-          # Only create tag if it doesn't exist (for workflow_dispatch)
-          create_only: ${{ github.event.inputs.version != '' }}
 
   sync-ha-addon:
     needs: create-release
