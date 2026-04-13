@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.1.0)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -11,7 +17,7 @@ permissions:
 
 env:
   HASS_ADDON_REPO: double-em/doubleem-hass-addons
-  VERSION: ${{ github.ref_name }}
+  VERSION: ${{ github.event.inputs.version || github.ref_name }}
 
 jobs:
   create-release:
@@ -26,7 +32,11 @@ jobs:
       - name: Extract version
         id: version
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
+          if [[ "${{ github.event.inputs.version }}" != "" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION=${GITHUB_REF#refs/tags/v}
+          fi
           echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Generate changelog from commits
