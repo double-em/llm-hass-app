@@ -21,6 +21,8 @@ env:
 jobs:
   create-release:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -94,7 +96,7 @@ jobs:
 
           # Get today's date and version (without v prefix)
           TODAY=$(date +%Y-%m-%d)
-          VERSION="${{ steps.version.outputs.VERSION }}"
+          VERSION="${{ needs.create-release.outputs.version }}"
 
           # Update config.yaml version
           sed -i "s/version: \".*\"/version: \"$VERSION\"/" llm_ai_dashboard/config.yaml
