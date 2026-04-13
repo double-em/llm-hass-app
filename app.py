@@ -125,7 +125,7 @@ def load_config():
             with open(options_file) as f:
                 config.update(json.load(f))
     except (PermissionError, IOError) as e:
-        logger.warning(f"Could not read {options_file}: {e}. Using defaults.")
+        logger.info(f"Could not read {options_file}: {e}. Using defaults.")
     logger.info(f"Loaded config: {config}")
 
 
@@ -2219,7 +2219,7 @@ def save_ha_config_to_file():
         with open(config_path, "w") as f:
             json.dump(ha_config, f)
     except PermissionError as e:
-        logger.warning(f"Could not write {config_path}: {e}. Config will not persist.")
+        logger.info(f"Could not write {config_path}: {e}. Config will not persist.")
 
 
 def load_ha_config():
@@ -2231,7 +2231,7 @@ def load_ha_config():
             with open(config_path) as f:
                 ha_config.update(json.load(f))
         except (PermissionError, FileNotFoundError, json.JSONDecodeError) as e:
-            logger.warning(f"Could not read {config_path}: {e}. Using defaults.")
+            logger.info(f"Could not read {config_path}: {e}. Using defaults.")
 
 
 # ============================================================================
@@ -2247,7 +2247,7 @@ def save_config():
             json.dump(config, f, indent=2)
         logger.info("Config saved")
     except PermissionError as e:
-        logger.warning(f"Could not write {options_file}: {e}. Config will not persist.")
+        logger.info(f"Could not write {options_file}: {e}. Config will not persist.")
 
 
 @app.route("/api/config", methods=["GET"])
