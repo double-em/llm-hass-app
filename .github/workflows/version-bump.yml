@@ -51,17 +51,37 @@ jobs:
         id: version
         if: steps.bump.outputs.bump != 'none'
         run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            LAST_TAG="v0.0.0"
+          fi
+          echo "Last tag: '$LAST_TAG'"
+
           # Strip leading v if present
           LAST_NUM=$(echo "$LAST_TAG" | sed 's/^v//')
-          # Validate we have valid semver parts
-          if ! echo "$LAST_NUM" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "Error: Invalid tag format '$LAST_TAG' -> '$LAST_NUM'"
+          echo "Stripped: '$LAST_NUM'"
+
+          # Validate we have valid semver parts (all three numbers)
+          PART_COUNT=$(echo "$LAST_NUM" | tr '.' '\n' | wc -l)
+          echo "Part count: $PART_COUNT"
+
+          if [ "$PART_COUNT" -lt 3 ] || [ "$PART_COUNT" -gt 3 ]; then
+            echo "Error: Invalid semver '$LAST_NUM' (expected 3 parts, got $PART_COUNT)"
             exit 1
           fi
+
+          # Extract parts with defaults for safety
           MAJOR=$(echo "$LAST_NUM" | cut -d. -f1)
           MINOR=$(echo "$LAST_NUM" | cut -d. -f2)
           PATCH=$(echo "$LAST_NUM" | cut -d. -f3)
+
+          # Validate all parts are numbers
+          if ! [[ "$MAJOR" =~ ^[0-9]+$ ]] || ! [[ "$MINOR" =~ ^[0-9]+$ ]] || ! [[ "$PATCH" =~ ^[0-9]+$ ]]; then
+            echo "Error: Non-numeric version parts: MAJOR='$MAJOR' MINOR='$MINOR' PATCH='$PATCH'"
+            exit 1
+          fi
+
+          echo "Current: $MAJOR.$MINOR.$PATCH"
 
           case "${{ steps.bump.outputs.bump }}" in
             major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
