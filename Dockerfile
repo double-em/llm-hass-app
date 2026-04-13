@@ -75,6 +75,7 @@ COPY *.py /app/
 RUN echo '__version__ = "'"${VERSION}"'"' > /app/version.py
 COPY memory/ /app/memory/
 COPY templates/ /app/templates/
+RUN mkdir -p /app/static/css /app/static/js || true
 
 # Create data directory with proper ownership
 RUN mkdir -p /data && chown -R appuser:appuser /app /data

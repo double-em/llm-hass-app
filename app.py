@@ -17,11 +17,15 @@ import tempfile
 import uuid
 from pathlib import Path
 
+import werkzeug.exceptions
+
 import torch
 import torchaudio
 from flask import (
     Flask,
+    abort,
     jsonify,
+    make_response,
     redirect,
     render_template,
     request,
@@ -63,6 +67,16 @@ logger.info(f"app starting version={__version__}")
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
 
+
+@app.errorhandler(werkzeug.exceptions.NotFound)
+def handle_not_found(e):
+    """Handle 404 errors for missing routes/static files."""
+    return "Not Found", 404
+
+@app.errorhandler(werkzeug.exceptions.InternalServerError)
+def handle_internal_error(e):
+    """Handle 500 errors."""
+    return "Internal Server Error", 500
 
 @app.errorhandler(Exception)
 def handle_exception(e):
