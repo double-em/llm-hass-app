@@ -17,7 +17,7 @@ permissions:
 
 env:
   HASS_ADDON_REPO: double-em/doubleem-hass-addons
-  VERSION: ${{ github.event.inputs.version }}
+  VERSION: ${{ github.event.inputs.version || github.ref_name }}
 
 jobs:
   create-release:
