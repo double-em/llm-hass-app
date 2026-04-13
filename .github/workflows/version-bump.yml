@@ -5,6 +5,10 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   determine-version:
     runs-on: ubuntu-latest
@@ -31,7 +35,7 @@ jobs:
         id: bump
         run: |
           COMMITS="${{ steps.commits.outputs.commits }}"
-          if echo "$COMMITS" | grep -qE 'feat!:|fix!:' | head -1; then
+          if echo "$COMMITS" | grep -qE 'feat!\:|fix!\:'; then
             echo "bump=major" >> $GITHUB_OUTPUT
           elif echo "$COMMITS" | grep -qE 'feat:'; then
             echo "bump=minor" >> $GITHUB_OUTPUT
