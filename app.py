@@ -2284,5 +2284,6 @@ if __name__ == "__main__":
     load_person_system()
     load_memory_system()
     load_voice_cache()
+    logger.info("Application startup complete. OmniVoice loaded: %s", omnivoice_model is not None)
 
     app.run(host=args.host, port=args.port, debug=args.debug)
