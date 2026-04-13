@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   determine-version:
@@ -63,7 +62,7 @@ jobs:
 
           echo "new_version=v${MAJOR}.${MINOR}.${PATCH}" >> $GITHUB_OUTPUT
 
-  create-version-pr:
+  create-tag:
     needs: determine-version
     runs-on: ubuntu-latest
     if: needs.determine-version.outputs.new_version != ''
@@ -71,19 +70,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
-
-      - name: Create PR
-        uses: peter-evans/create-pull-request@v5
-        with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: 'chore: version bump'
-          title: 'chore: version bump to ${{ needs.determine-version.outputs.new_version }}'
-          body: '## Version Bump
 
-This PR bumps version to `${{ needs.determine-version.outputs.new_version }}` based on commit analysis.
-
-Merge to trigger release workflow.'
-          branch: version-bump
-          base: main
+      - name: Create version tag
+        run: |
+          git tag ${{ needs.determine-version.outputs.new_version }}
+          git push origin ${{ needs.determine-version.outputs.new_version }}
