@@ -69,6 +69,41 @@ app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
 
 
+# ---------------------------------------------------------------------------
+# Home Assistant ingress support
+# ---------------------------------------------------------------------------
+# When this addon runs behind HA's ingress proxy, every request comes in as
+#   GET /api/hassio_ingress/<token>/<original-path>
+# and HA sets `X-Ingress-Path: /api/hassio_ingress/<token>` so the addon can
+# rebuild the original URL. Without intervention, Flask sees
+#   request.path = /api/hassio_ingress/<token>/providers
+# and the @app.route('/providers') decorator would 404.
+#
+# The fix: set SCRIPT_NAME to the ingress path AND rewrite PATH_INFO to the
+# unprefixed path. Then:
+#   * routes match as if the addon was at the root
+#   * url_for() prepends the ingress prefix automatically
+#   * request.path returns the unprefixed path
+#   * request.script_root returns the ingress prefix
+# In direct-access mode (no X-Ingress-Path), nothing changes.
+@app.before_request
+def _handle_ingress():
+    ingress = request.headers.get("X-Ingress-Path", "").rstrip("/")
+    if not ingress:
+        return  # direct access (port mapping); nothing to do
+    request.environ["SCRIPT_NAME"] = ingress
+    if request.path == ingress or request.path == ingress + "/":
+        request.environ["PATH_INFO"] = "/"
+    elif request.path.startswith(ingress + "/"):
+        request.environ["PATH_INFO"] = request.path[len(ingress):]
+
+
+@app.context_processor
+def _inject_ingress_path():
+    """Make INGRESS_PATH available to templates (and to JS via tojson)."""
+    return {"INGRESS_PATH": request.script_root or ""}
+
+
 @app.errorhandler(werkzeug.exceptions.NotFound)
 def handle_not_found(e):
     """Handle 404 errors for missing routes/static files."""

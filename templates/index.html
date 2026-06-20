@@ -13,7 +13,7 @@
                 <h3>AI Providers</h3>
                 <p id="providers-count">Loading...</p>
             </div>
-            <a href="/providers" class="card-link">Manage →</a>
+            <a href="{{ url_for('providers_page') }}" class="card-link">Manage →</a>
         </div>
 
         <div class="card">
@@ -22,7 +22,7 @@
                 <h3>Voices</h3>
                 <p id="voices-count">Loading...</p>
             </div>
-            <a href="/voices" class="card-link">Manage →</a>
+            <a href="{{ url_for('voices_page') }}" class="card-link">Manage →</a>
         </div>
 
         <div class="card">
@@ -31,7 +31,7 @@
                 <h3>TTS</h3>
                 <p>Generate speech</p>
             </div>
-            <a href="/tts" class="card-link">Generate →</a>
+            <a href="{{ url_for('tts_page') }}" class="card-link">Generate →</a>
         </div>
     </div>
 

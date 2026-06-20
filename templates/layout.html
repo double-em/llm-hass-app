@@ -5,6 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}LLM AI Dashboard{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {# Ingress base path: the HA ingress prefix, or '' in direct-access mode.
+       Also: monkey-patch window.fetch() so every call to fetch('/api/...')
+       automatically gets the ingress prefix prepended. This is a transparent
+       shim — direct-access mode (INGRESS_PATH='') is a no-op, and external
+       URLs (http://, https://) are left alone. #}
+    <script>
+      window.INGRESS_PATH = {{ INGRESS_PATH|tojson }};
+      (function () {
+        if (!window.INGRESS_PATH) return;  // direct access: nothing to do
+        var orig = window.fetch.bind(window);
+        window.fetch = function (input, init) {
+          if (typeof input === 'string' && input.charAt(0) === '/' && input.charAt(1) !== '/') {
+            input = window.INGRESS_PATH + input;
+          } else if (input && typeof input === 'object' && typeof input.url === 'string'
+                     && input.url.charAt(0) === '/' && input.url.charAt(1) !== '/') {
+            input = new Request(window.INGRESS_PATH + input.url, input);
+          }
+          return orig(input, init);
+        };
+      })();
+    </script>
 </head>
 <body>
     <nav class="sidebar">
@@ -12,28 +33,28 @@
             <h2>LLM AI</h2>
         </div>
         <ul class="nav-links">
-            <li><a href="/" class="{% if request.path == '/' %}active{% endif %}">
+            <li><a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">
                 <span class="icon">🏠</span> Dashboard
             </a></li>
-            <li><a href="/providers" class="{% if request.path == '/providers' %}active{% endif %}">
+            <li><a href="{{ url_for('providers_page') }}" class="{% if request.endpoint == 'providers_page' %}active{% endif %}">
                 <span class="icon">🤖</span> AI Providers
             </a></li>
-            <li><a href="/voices" class="{% if request.path == '/voices' %}active{% endif %}">
+            <li><a href="{{ url_for('voices_page') }}" class="{% if request.endpoint == 'voices_page' %}active{% endif %}">
                 <span class="icon">🎙️</span> Voices
             </a></li>
-            <li><a href="/persons" class="{% if request.path == '/persons' %}active{% endif %}">
+            <li><a href="{{ url_for('persons_page') }}" class="{% if request.endpoint == 'persons_page' %}active{% endif %}">
                 <span class="icon">👤</span> Persons
             </a></li>
-            <li><a href="/tts" class="{% if request.path == '/tts' %}active{% endif %}">
+            <li><a href="{{ url_for('tts_page') }}" class="{% if request.endpoint == 'tts_page' %}active{% endif %}">
                 <span class="icon">🔊</span> TTS
             </a></li>
-            <li><a href="/memory" class="{% if request.path == '/memory' %}active{% endif %}">
+            <li><a href="{{ url_for('memory_page') }}" class="{% if request.endpoint == 'memory_page' %}active{% endif %}">
                 <span class="icon">🧠</span> AI Memory
             </a></li>
-            <li><a href="/vector" class="{% if request.path == '/vector' %}active{% endif %}">
+            <li><a href="{{ url_for('vector_page') }}" class="{% if request.endpoint == 'vector_page' %}active{% endif %}">
                 <span class="icon">🔍</span> Vector Memory
             </a></li>
-            <li><a href="/ha-assists" class="{% if request.path == '/ha-assists' %}active{% endif %}">
+            <li><a href="{{ url_for('ha_assists_page') }}" class="{% if request.endpoint == 'ha_assists_page' %}active{% endif %}">
                 <span class="icon">🏠</span> HA Assists
             </a></li>
         </ul>
