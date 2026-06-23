@@ -82,8 +82,14 @@ COPY static/js/app.js /app/static/js/
 # Create data directory with proper ownership
 RUN mkdir -p /data && chown -R appuser:appuser /app /data
 
-EXPOSE 8000
+EXPOSE 8099
 
 USER appuser
 
-CMD ["python", "app.py"]
+# HA addon ingress routes to port 8099 (declared in the wrapper's
+# config.yaml `ports:` block). The wrapper's run.sh would also pass
+# --port 8099, but with `image:` set on the wrapper the supervisor
+# pulls this image verbatim and run.sh never runs — so we bake the
+# port into CMD here instead. Standalone users can override with
+# `docker run ... python app.py --port XXXX`.
+CMD ["python", "app.py", "--host", "0.0.0.0", "--port", "8099"]

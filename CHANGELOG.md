@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2026-06-23
+
+### Fixed
+- **HA addon ingress reachable again.** The image's `CMD` was `python app.py` which used the argparse default `--port 8000`, but the wrapper's `config.yaml` declares `ports: 8099/tcp` and `EXPOSE 8099`. Because the wrapper uses `image: "ghcr.io/double-em/llm-hass-app"` (skipping local build), the supervisor pulled this image verbatim and the wrapper's `run.sh` (which passes `--port 8099`) never executed. Result: container bound 8000, ingress tried 8099, every panel open failed with `Cannot connect to host ... ssl:default [Connect call failed]`. CMD now bakes in `--port 8099 --host 0.0.0.0` so the published image serves the right port out of the box. Standalone users can override at runtime (`docker run ... python app.py --port XXXX`).
+
+### Notes
+- Image digest will change; HA supervisor detects the new `:latest` automatically on next poll, but you can force-refresh from the Add-on Store UI to skip the wait.
+- `/data` permissions (`vector_memory`, `voice_cache` falling back to in-memory) are still bypassed by `image:` — wrapper's `run.sh` chmod-777 never runs. Separate follow-up; won't block the WebUI.
+
 ## [1.4.1] - 2026-06-23
 
 ### Fixed
