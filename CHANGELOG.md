@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.3] - 2026-06-23
+
+### Fixed
+- **Ingress nav links 404, CSS missing, only the dashboard page worked.** The previous ingress rewriter lived in `@app.before_request`, which runs AFTER `RequestContext.push()` has already bound Flask's URL map adapter with the empty default `SCRIPT_NAME`. So even though we set `SCRIPT_NAME=/api/hassio_ingress/<token>` in environ, `url_for()` had already cached an adapter with `SCRIPT_NAME=""` and emitted hrefs like `/providers` instead of `/api/hassio_ingress/<token>/providers`. The browser resolved those against HA's root, HA core returned 404 (aiohttp lowercase "404: Not found" — not Flask's HTML 404 page), and the request never reached the addon. Replaced the `before_request` with a WSGI middleware (`_IngressMiddleware`) that rewrites `SCRIPT_NAME` and `PATH_INFO` BEFORE Flask creates the `RequestContext`, so the URL adapter is bound with the right prefix and `url_for()` generates the right paths. The dashboard page worked because `/` is the only route where both the old and new behavior happened to resolve correctly.
+
 ## [1.4.2] - 2026-06-23
 
 ### Fixed

@@ -79,23 +79,41 @@ app.config["JSON_SORT_KEYS"] = False
 #   request.path = /api/hassio_ingress/<token>/providers
 # and the @app.route('/providers') decorator would 404.
 #
-# The fix: set SCRIPT_NAME to the ingress path AND rewrite PATH_INFO to the
-# unprefixed path. Then:
-#   * routes match as if the addon was at the root
-#   * url_for() prepends the ingress prefix automatically
-#   * request.path returns the unprefixed path
-#   * request.script_root returns the ingress prefix
+# Implementation note (v1.4.3): the previous version did this in
+# `@app.before_request`. That was wrong — `RequestContext.push()` had already
+# bound Flask's URL map adapter with the empty default SCRIPT_NAME by then,
+# so `url_for()` kept emitting unprefixed paths like `/providers` instead of
+# `/api/hassio_ingress/<token>/providers`. The browser resolved those against
+# HA's root URL, HA core returned 404 (aiohttp lowercase "404: Not found"),
+# and the request never reached the addon. Visible symptom: nav links 404,
+# CSS missing, addon not navigable.
+#
+# The fix: a WSGI middleware that rewrites SCRIPT_NAME and PATH_INFO BEFORE
+# Flask's RequestContext is created, so the URL adapter is bound with the
+# correct SCRIPT_NAME from the start. url_for() then generates the right
+# prefix automatically.
+#
 # In direct-access mode (no X-Ingress-Path), nothing changes.
-@app.before_request
-def _handle_ingress():
-    ingress = request.headers.get("X-Ingress-Path", "").rstrip("/")
-    if not ingress:
-        return  # direct access (port mapping); nothing to do
-    request.environ["SCRIPT_NAME"] = ingress
-    if request.path == ingress or request.path == ingress + "/":
-        request.environ["PATH_INFO"] = "/"
-    elif request.path.startswith(ingress + "/"):
-        request.environ["PATH_INFO"] = request.path[len(ingress):]
+class _IngressMiddleware:
+    """WSGI middleware that handles HA ingress path rewriting.
+
+    Must run as middleware (not before_request) so SCRIPT_NAME is set
+    before Flask's RequestContext binds the URL map adapter.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    def __call__(self, environ, start_response):
+        ingress = environ.get("HTTP_X_INGRESS_PATH", "").rstrip("/")
+        if ingress:
+            environ["SCRIPT_NAME"] = ingress
+            path_info = environ.get("PATH_INFO", "")
+            if path_info == ingress or path_info == ingress + "/":
+                environ["PATH_INFO"] = "/"
+            elif path_info.startswith(ingress + "/"):
+                environ["PATH_INFO"] = path_info[len(ingress):]
+        return self.app(environ, start_response)
 
 
 @app.context_processor
@@ -2307,6 +2325,16 @@ def health():
 # ============================================================================
 # Main
 # ============================================================================
+
+# Install ingress middleware BEFORE the app is served. This rewrites
+# SCRIPT_NAME / PATH_INFO for HA ingress before Flask creates the
+# RequestContext (and before the URL map adapter is bound). Doing this
+# in @app.before_request was too late: the adapter was already bound
+# with the empty default SCRIPT_NAME, so url_for() produced hrefs like
+# `/providers` instead of `/api/hassio_ingress/<token>/providers`, and
+# the browser hit HA core's 404 instead of being forwarded to us.
+app.wsgi_app = _IngressMiddleware(app.wsgi_app)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="LLM AI Dashboard")
