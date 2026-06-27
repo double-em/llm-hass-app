@@ -55,6 +55,7 @@ from enrollment import EnrollmentManager
 from voiceprint import VoiceprintManager
 
 from memory import SessionStore, MessageStore, VectorStore, EmbeddingEngine
+from memory._permissions import get_data_dir_status
 from memory.ha_assists import HAAssistsClient
 
 from logging_config import configure_logging, get_logger
@@ -219,15 +220,37 @@ def load_person_system():
 
 
 def load_memory_system():
-    """Initialize the AI memory and vector memory components."""
+    """Initialize the AI memory and vector memory components.
+
+    Runs :func:`memory._permissions.get_data_dir_status` BEFORE constructing
+    :class:`VectorStore` so that any permission errors are diagnosed and
+    surfaced via ``/api/health`` *before* the store silently falls back to
+    in-memory mode. This prevents the "vector memory shows zero entries
+    with no explanation" symptom.
+    """
     global session_store, message_store, vector_store, embedding_engine, ha_assists_client
     try:
+        # Diagnose (and best-effort-fix) /data permissions BEFORE the store
+        # is created. The result is cached; /api/health reads the same cache.
+        data_dir_status = get_data_dir_status()
+        if not data_dir_status.get("writable"):
+            logger.warning(
+                "data_dir not writable at startup: uid=%s euid=%s mode=%s error=%s. "
+                "Vector memory will use in-memory fallback and entries will NOT persist "
+                "across restarts. See /api/health for details.",
+                data_dir_status.get("process_uid"),
+                data_dir_status.get("process_euid"),
+                data_dir_status.get("mode"),
+                data_dir_status.get("error"),
+            )
+
         session_store = SessionStore()
         message_store = MessageStore()
         embedding_engine = EmbeddingEngine()
         vector_store = VectorStore()
         ha_assists_client = HAAssistsClient()
-        logger.info("Memory system initialized")
+        logger.info("Memory system initialized (data_dir_writable=%s)",
+                    data_dir_status.get("writable", False))
     except Exception as e:
         logger.warning(f"Memory system init failed: {e}. Running without memory system.")
         session_store = None
@@ -565,7 +588,7 @@ def generate_omnivoice_tts(data, texts, is_batch=False):
 
     # Query params
     download = request.args.get("download", "false").lower() == "true"
-    embed = request.args.get("embed", "false").lower() == "true"
+    embed = request.args.get("embed", "true").lower() == "true"
 
     # Handle preset mode
     if preset_name:
@@ -2313,12 +2336,16 @@ def get_config():
 @app.route("/api/health", methods=["GET"])
 def health():
     """Health check endpoint."""
+    # Grab data_dir status (cached; cheap to call every health poll).
+    data_dir = get_data_dir_status()
     return jsonify({
         "status": "ok",
         "omnivoice_loaded": omnivoice_model is not None,
         "providers_count": len(config.get("providers", {})),
         "sessions_count": session_store.get_session_count() if session_store else 0,
         "embedding_available": embedding_engine.is_available() if embedding_engine else False,
+        # Vector memory diagnostics — writable=False means persistence is broken.
+        "data_dir": data_dir,
     })
 
 

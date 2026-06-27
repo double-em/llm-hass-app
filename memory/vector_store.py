@@ -25,11 +25,27 @@ class VectorStore:
         self._collection = None
 
     def _ensure_dirs(self):
-        """Ensure required directories exist."""
+        """Ensure required directories exist.
+
+        Logs the actual PermissionError with process uid/gid so the operator
+        can see *why* writes fail (root-owned /data mount is the usual cause).
+        Sets self._permission_error so callers (and /api/health via the
+        permissions module) can surface the failure upstream.
+        """
         try:
             self.vector_dir.mkdir(parents=True, exist_ok=True)
         except PermissionError as e:
-            logger.warning(f"Could not create {self.vector_dir}: {e}. Using in-memory fallback.")
+            # Include uid/gid of the running process so the log clearly shows
+            # "appuser (1000) can't write to root-owned /data".
+            import stat as _stat
+            parent_st = self.vector_dir.parent.stat() if self.vector_dir.parent.exists() else None
+            parent_mode = oct(_stat.S_IMODE(parent_st.st_mode)) if parent_st else "unknown"
+            logger.error(
+                "Could not create %s: PermissionError: %s. "
+                "Process uid=%d euid=%d gid=%d; parent mode=%s. "
+                "Using in-memory fallback (vector_memory will NOT persist across restarts).",
+                self.vector_dir, e, os.getuid(), os.geteuid(), os.getgid(), parent_mode,
+            )
             self._permission_error = True
 
     def _get_chroma_client(self):
