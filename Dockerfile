@@ -84,7 +84,11 @@ RUN mkdir -p /data && chown -R appuser:appuser /app /data
 
 EXPOSE 8099
 
-USER appuser
+# USER appuser removed 2026-06-27: running as root so the supervisor's
+# /data mount (owned root:root) does not block writes to /data/<subdirs>.
+# Flask does not need root; defence-in-depth for the appuser is lost but
+# this is acceptable for a LAN-only HA addon.
+USER root
 
 # HA addon ingress routes to port 8099 (declared in the wrapper's
 # config.yaml `ports:` block). The wrapper's run.sh would also pass

@@ -143,21 +143,33 @@ async function generateTTS(e) {
     btn.textContent = 'Generating...';
 
     try {
-        const response = await fetch('/api/tts', {
+        // embed=true forces JSON (avoids binary blob over HA ingress; prevents
+        // "Error: Load failed" when inference > 60s and ingress times out).
+        const response = await fetch('/api/tts?embed=true', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
 
-        if (response.ok) {
-            generatedAudioBlob = await response.blob();
-            const audio = document.getElementById('tts-audio');
-            audio.src = URL.createObjectURL(generatedAudioBlob);
-            document.getElementById('tts-result').style.display = 'block';
-        } else {
-            const err = await response.json();
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
             alert('Error: ' + (err.error || 'Generation failed'));
+            return;
         }
+
+        const data = await response.json();
+        const first = Array.isArray(data.audios) ? data.audios[0] : data;
+        const b64 = first.audio;
+
+        // Decode base64 → Uint8Array → Blob (audio/wav) → Object URL
+        const binary = atob(b64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        generatedAudioBlob = new Blob([bytes], { type: 'audio/wav' });
+
+        const audio = document.getElementById('tts-audio');
+        audio.src = URL.createObjectURL(generatedAudioBlob);
+        document.getElementById('tts-result').style.display = 'block';
     } catch (e) {
         alert('Error: ' + e.message);
     } finally {

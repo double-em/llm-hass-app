@@ -115,25 +115,52 @@ async function generateQuickTTS() {
     const body = { text, provider };
     if (voice) body.voice = voice;
 
+    const btn = document.querySelector('#quick-text + .tts-options button')
+                || document.querySelector('button[onclick="generateQuickTTS()"]');
+    const audioEl = document.getElementById('quick-audio');
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+
     try {
-        const response = await fetch('/api/tts', {
+        // embed=true forces JSON (avoids binary blob over HA ingress, which can
+        // trigger "Error: Load failed" when inference > 60s and ingress times out).
+        const response = await fetch('/api/tts?embed=true', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
 
-        if (response.ok) {
-            const blob = await response.blob();
-            const audio = document.getElementById('quick-audio');
-            audio.src = URL.createObjectURL(blob);
-            audio.style.display = 'block';
-            audio.play();
-        } else {
-            const err = await response.json();
-            alert('Error: ' + err.error);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+            alert('Error: ' + (err.error || 'Generation failed'));
+            return;
+        }
+
+        const data = await response.json();
+        const first = Array.isArray(data.audios) ? data.audios[0] : data;
+        const b64 = first.audio;
+
+        // Decode base64 → Uint8Array → Blob (audio/wav) → Object URL → play
+        const binary = atob(b64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const blob = new Blob([bytes], { type: 'audio/wav' });
+        audioEl.src = URL.createObjectURL(blob);
+        audioEl.style.display = 'block';
+
+        try {
+            await audioEl.play();
+        } catch (playErr) {
+            // Autoplay policy blocked playback — surface clearly rather than silently failing.
+            alert(
+                'Audio generated but autoplay was blocked by your browser.\n' +
+                'Click the ▶ button on the audio player to hear it.'
+            );
         }
     } catch (e) {
         alert('Error: ' + e.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Generate'; }
     }
 }
 
